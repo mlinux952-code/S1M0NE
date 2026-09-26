@@ -1,42 +1,59 @@
 # SYSTEM_PROFILE.md — Référence matérielle officielle de S1M0NE
 
-Statut global : **DECLARED (déclaré par l'utilisateur)** — non vérifié directement par l'agent,
-car l'agent travaille dans un sandbox cloud de développement, distinct de la machine cible réelle.
+**Statut global : VERIFIED** — confirmé le 2026-09-26 par exécution réelle de
+`scripts/audit_system.sh` sur la machine cible (`omrane@omrane-Inspiron-3520`), sortie complète
+récupérée et analysée. Les valeurs déclarées initialement se sont révélées quasi exactes.
 
-> Règle anti-hallucination appliquée : on n'affirme jamais avoir vérifié ce qu'on n'a pas vérifié.
-> Ces valeurs viennent du prompt fourni par l'utilisateur, qui a confirmé qu'il s'agit bien des
-> caractéristiques réelles de son Dell. Elles sont donc **fiables mais non ré-auditées par nous**.
-> Un script (`scripts/audit_system.sh`) est fourni ci-dessous pour que tu puisses le lancer
-> toi-même sur ta machine et confirmer/actualiser ce fichier à tout moment (Phase 0 le permet,
-> Phase 10 l'exige à nouveau pour l'optimisation).
+## Machine cible (vérifiée)
 
-## Machine cible (déclarée)
+| Composant | Valeur vérifiée | Détail de la mesure |
+|---|---|---|
+| OS | Linux Mint 22.3 "Zena" (base Ubuntu 24.04 "noble") | `/etc/os-release` |
+| Noyau | 7.0.0-31-generic (x86_64) | `uname -a` |
+| CPU | Intel Core i3-3110M @ 2.40GHz, 2 cœurs / 4 threads (Ivy Bridge, famille 6 modèle 58) | `lscpu` |
+| RAM | 3.7 GiB total | `free -h` |
+| Swap | 3.9-4.04 GiB | `free -h` |
+| GPU | Mesa Intel HD Graphics 4000 (Ivy Bridge, rev 09), pilote i915 | `lspci` + `glxinfo` |
+| Disque système | `/dev/sda3` ext4, 117 GiB total, 85 GiB libres (24 % utilisés) | `df -hT` |
+| Disque secondaire | `/dev/sdc2` NTFS (fuseblk), 932 GiB total, 926 GiB libres, monté sur `/media/omrane/D0C698F3C698DB54` | `df -hT` / `lsblk -f` |
+| Python | 3.12.3 | `python3 --version` |
+| pip | 26.2.1 (dans le venv du projet) | `pip3 --version` |
+| Git | 2.43.0 | `git --version` |
+| Node.js | v18.19.1 (présent mais non requis par S1M0NE) | `node --version` |
+| sqlite3 (CLI) | absent — sans impact, le module `sqlite3` intégré à Python est utilisé par S1M0NE | `sqlite3 --version` |
+| Réseau | `wlp7s0` (WiFi) actif — `enp9s0` (Ethernet) inactif | `ip -brief addr` |
+| Températures au repos | CPU ~51-52°C (seuils : high 72°C, crit 90°C) — aucun risque actuel | `sensors` |
 
-| Composant | Valeur déclarée |
-|---|---|
-| OS | Linux Mint 22.3 |
-| Architecture | x86_64 |
-| CPU | Intel Core i3-3110M, 2 cœurs physiques, 4 threads, 2.40 GHz |
-| RAM | 3.7 GiB utilisables |
-| Swap | 3.9 GiB |
-| GPU | Intel intégré (3e génération), pilote i915 |
-| Disque système | ~118.7 GiB total, ~86 GiB disponibles |
-| Disque secondaire | ~931.5 GiB, NTFS, ~926 GiB disponibles |
+## Charge réelle observée au repos (avec Firefox ouvert)
+
+Donnée importante pour le Resource Manager (Phase 3+) : même "au repos", avec un usage normal
+du PC (navigateur ouvert), il ne reste que **~1.7 Gio de RAM disponible** sur 3.7 Gio (Firefox et
+ses process de contenu consomment à eux seuls plus de 2 Gio cumulés). Cela confirme et renforce
+la nécessité des décisions déjà prises (pas de Redis, pas de gros process permanent, parallélisme
+limité) : S1M0NE doit rester utilisable **en plus** de l'usage courant du PC, pas seulement sur
+une machine vide.
+
+Aucun service lourd ou inhabituel détecté parmi les services systemd actifs (uniquement les
+services standards de bureau Linux Mint : réseau, impression, bluetooth, thermald, etc.).
 
 ## Classification
 
-**Machine LOW-END** confirmée :
-- 2 cœurs / 4 threads à 2.4 GHz (CPU d'entrée de gamme, ~12 ans d'âge, sans instructions AVX2 modernes) ;
-- moins de 4 GiB de RAM utilisable → aucune marge pour des services lourds en parallèle ;
-- GPU Intel HD 4000 (3e gen) : **aucune accélération IA locale sérieuse possible** (pas de CUDA, support OpenVINO/oneAPI limité et peu fiable sur ce silicium) ;
-- swap présent (3.9 GiB) mais un swap fortement sollicité sur un disque lent dégraderait sévèrement la réactivité.
+**Machine LOW-END confirmée par la mesure réelle**, avec une marge encore plus réduite que prévu
+une fois l'usage courant (navigateur, etc.) pris en compte. Toutes les conséquences déjà tirées en
+Phase 0 restent valables, renforcées :
+- pas de LLM local ;
+- un seul processus serveur S1M0NE ;
+- SQLite plutôt que tout serveur de base de données ;
+- pas de Redis/Celery/Elasticsearch/Docker lourd ;
+- déport de l'IA lourde vers des APIs distantes gratuites.
 
-Conséquence directe sur l'architecture (détaillée dans `ARCHITECTURE_OPTIONS.md` et `DECISIONS.md`) :
-- **pas de LLM local** (même quantifié en 4 bits, un modèle 7B nécessite ~4-5 GiB de RAM rien que pour les poids : incompatible) ;
-- **un seul processus serveur permanent** (le cœur S1M0NE), pas de pile "microservices + broker" ;
-- **SQLite** plutôt que tout serveur de base de données ;
-- **pas de Redis/Celery/Elasticsearch/Docker lourd** ;
-- déport de l'IA lourde et des recherches gourmandes vers des APIs distantes gratuites.
+## Historique
+
+- 2026-09-26 — Spécifications initiales déclarées par l'utilisateur (voir Git, commit Phase 0).
+- 2026-09-26 — **Vérification réelle effectuée** via `scripts/audit_system.sh`, valeurs confirmées
+  à l'identique (écarts négligeables liés aux méthodes d'arrondi GiB/Go), + informations
+  logicielles et charge réelle ajoutées.
+
 
 ## Informations manquantes à confirmer sur la machine réelle
 

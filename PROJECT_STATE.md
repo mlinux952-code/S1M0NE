@@ -6,7 +6,7 @@
 ## État actuel
 
 - **PHASE 0 — DÉCOUVERTE : terminée et validée.**
-- **PHASE 1 — FONDATION : terminée et testée (15/15 tests, install.sh validé sur clone propre).**
+- **PHASE 1 — FONDATION : terminée, testée ET VALIDÉE SUR LA VRAIE MACHINE (omrane-Inspiron-3520, Linux Mint 22.3, install.sh + 15/15 tests exécutés avec succès en conditions réelles).**
 - Prochaine phase à valider avec l'utilisateur avant démarrage : **PHASE 2 — INTERFACE WEB**.
 
 ## Contexte d'exécution important
@@ -46,7 +46,7 @@
 
 ## En cours / en attente
 
-- [ ] Exécution de `scripts/audit_system.sh` sur la machine réelle (optionnel mais recommandé) et
+- [x] Exécution de `scripts/audit_system.sh` sur la machine réelle : FAIT, SYSTEM_PROFILE.md passé en VERIFIED.
       mise à jour de `SYSTEM_PROFILE.md` avec le statut `VERIFIED`.
 - [ ] Validation utilisateur avant de démarrer la **PHASE 2 — INTERFACE WEB** (FastAPI + Jinja2 +
       htmx/Alpine.js, dashboard + terminal web minimal).
