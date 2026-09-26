@@ -46,8 +46,7 @@
 
 ## En cours / en attente
 
-- [x] Exécution de `scripts/audit_system.sh` sur la machine réelle : FAIT, SYSTEM_PROFILE.md passé en VERIFIED.
-      mise à jour de `SYSTEM_PROFILE.md` avec le statut `VERIFIED`.
+- [x] Exécution de `scripts/audit_system.sh` sur la machine réelle : FAIT, `SYSTEM_PROFILE.md` passé en VERIFIED.
 - [ ] Validation utilisateur avant de démarrer la **PHASE 2 — INTERFACE WEB** (FastAPI + Jinja2 +
       htmx/Alpine.js, dashboard + terminal web minimal).
 
