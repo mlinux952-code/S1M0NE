@@ -14,6 +14,7 @@ from connectors.github import GitHubConnector
 from connectors.gitlab import GitLabConnector
 from connectors.huggingface import HuggingFaceConnector
 from connectors.npm import NpmConnector
+from connectors.pypi import PyPiConnector
 
 
 @pytest.fixture(autouse=True)
@@ -419,6 +420,95 @@ def test_available_connectors_lists_gitlab_and_codeberg():
     names = [c["name"] for c in available_connectors()]
     assert "gitlab" in names
     assert "codeberg" in names
+
+
+PYPI_SAMPLE_RESPONSE = {
+    "info": {
+        "name": "requests",
+        "summary": "Python HTTP for Humans.",
+        "version": "2.31.0",
+        "author": "Kenneth Reitz",
+        "project_url": "https://pypi.org/project/requests/",
+    }
+}
+
+
+def _mock_pypi_client(payload, status_code: int = 200) -> httpx.AsyncClient:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(status_code, json=payload)
+
+    transport = httpx.MockTransport(handler)
+    return httpx.AsyncClient(transport=transport)
+
+
+def test_pypi_connector_returns_single_exact_match():
+    async def scenario():
+        client = _mock_pypi_client(PYPI_SAMPLE_RESPONSE)
+        connector = PyPiConnector(client=client)
+        try:
+            return await connector.search("requests")
+        finally:
+            await client.aclose()
+
+    results = asyncio.run(scenario())
+
+    assert len(results) == 1
+    assert results[0].source == "pypi"
+    assert results[0].name == "requests"
+    assert results[0].extra["exact_match_only"] is True
+
+
+def test_pypi_connector_returns_empty_list_on_404_not_an_error():
+    """Un paquet inexistant n'est pas une erreur : liste vide, jamais un résultat inventé."""
+
+    async def scenario():
+        client = _mock_pypi_client({}, status_code=404)
+        connector = PyPiConnector(client=client)
+        try:
+            return await connector.search("ce-paquet-nexiste-vraiment-pas-xyz123")
+        finally:
+            await client.aclose()
+
+    results = asyncio.run(scenario())
+    assert results == []
+
+
+def test_pypi_connector_raises_on_real_http_error_not_404():
+    async def scenario():
+        client = _mock_pypi_client({}, status_code=503)
+        connector = PyPiConnector(client=client)
+        try:
+            await connector.search("requests")
+        finally:
+            await client.aclose()
+
+    try:
+        asyncio.run(scenario())
+        raised = False
+    except httpx.HTTPStatusError:
+        raised = True
+    assert raised
+
+
+def test_pypi_connector_real_network_smoke_test_existing_package():
+    """Test réel (pas de mock) contre la vraie API PyPI, avec un paquet qui existe vraiment."""
+    connector = PyPiConnector()
+    results = asyncio.run(connector.search("requests"))
+    assert len(results) == 1
+    assert results[0].name == "requests"
+
+
+def test_pypi_connector_real_network_smoke_test_nonexistent_package():
+    """Vérifie en conditions réelles qu'un nom inexistant donne bien [] et pas une erreur."""
+    connector = PyPiConnector()
+    results = asyncio.run(connector.search("ce-paquet-nexiste-vraiment-pas-xyz123-s1mone-test"))
+    assert results == []
+
+
+def test_available_connectors_lists_pypi_with_degraded_mode_mentioned():
+    entries = {c["name"]: c["description"] for c in available_connectors()}
+    assert "pypi" in entries
+    assert "DÉGRADÉ" in entries["pypi"]  # transparence exigée par D9 : message clair pour l'UI
 
 
 class _FailingConnector(Connector):
