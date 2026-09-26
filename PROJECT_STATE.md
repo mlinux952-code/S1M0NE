@@ -7,7 +7,20 @@
 
 - **PHASE 0 — DÉCOUVERTE : terminée et validée.**
 - **PHASE 1 — FONDATION : terminée, testée ET VALIDÉE SUR LA VRAIE MACHINE (omrane-Inspiron-3520, Linux Mint 22.3, install.sh + 15/15 tests exécutés avec succès en conditions réelles).**
-- Prochaine phase à valider avec l'utilisateur avant démarrage : **PHASE 2 — INTERFACE WEB**.
+- **PHASE 2 — INTERFACE WEB : terminée et testée en sandbox (23/23 tests, dashboard live vérifié). EN ATTENTE de validation sur la machine réelle (prochain paquet à transmettre).**
+- Prochaine phase à valider avec l'utilisateur avant démarrage : **PHASE 3 — TASK MANAGER**.
+
+## Fonctionnalités terminées — Phase 2 (nouveau)
+
+- [x] `web/app.py` — Web Gateway FastAPI : `/`, `/terminal`, `/api/health`, `/api/system`,
+      `/api/cli/{command}` (liste blanche stricte : status/system/version, 403 sinon),
+      `/partials/system`, `/partials/health`.
+- [x] `web/templates/` — Jinja2 (base + dashboard + terminal + fragments htmx).
+- [x] `web/static/vendor/` — htmx 2.0.3 + Alpine.js 3.14.3 vendorisés localement (pas de CDN,
+      fonctionne hors-ligne, conforme DECISIONS.md D8).
+- [x] `cli/main.py` — nouvelle commande `s1mone web` (lance uvicorn, host/port configurables).
+- [x] 8 nouveaux tests (`test_web.py`, `test_cli_web_command.py`) → total 23/23.
+- [x] Vérifié en live dans le sandbox (dashboard, terminal web, API) avant transmission.
 
 ## Contexte d'exécution important
 
