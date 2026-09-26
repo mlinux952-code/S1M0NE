@@ -89,6 +89,20 @@ def system() -> None:
 
 
 @app.command()
+def web(
+    host: str = typer.Option("0.0.0.0", help="Adresse d'écoute du serveur web."),
+    port: int = typer.Option(8420, help="Port d'écoute du serveur web."),
+    reload: bool = typer.Option(False, help="Rechargement auto (développement uniquement)."),
+) -> None:
+    """Démarre l'interface web S1M0NE (dashboard + terminal web)."""
+    import uvicorn
+
+    console.print(f"[green]Démarrage de l'interface web sur http://{host}:{port}[/green]")
+    console.print("Arrête avec CTRL+C.")
+    uvicorn.run("web.app:app", host=host, port=port, reload=reload)
+
+
+@app.command()
 def version() -> None:
     """Affiche la version de S1M0NE et les infos de plateforme."""
     info = get_platform_info()
