@@ -22,6 +22,7 @@ from rich.console import Console
 from rich.table import Table
 
 from core.config import settings
+from core.timeutil import format_timestamp
 from system.healthcheck import run_all_checks
 from system.monitor import get_platform_info, get_snapshot, resource_level
 from tasks.manager import (
@@ -68,10 +69,7 @@ _STATUS_COLORS = {
 }
 
 
-def _fmt_ts(ts: float | None) -> str:
-    if not ts:
-        return "-"
-    return datetime.fromtimestamp(ts).strftime("%H:%M:%S")
+_fmt_ts = format_timestamp  # alias local, logique partagée avec le web (core/timeutil.py)
 
 
 @app.command()

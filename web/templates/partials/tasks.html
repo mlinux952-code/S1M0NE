@@ -52,8 +52,8 @@
                         {{ t.status }}
                     </span>
                 </td>
-                <td>{{ t.created_at | int }}</td>
-                <td>{{ t.finished_at | int if t.finished_at else '-' }}</td>
+                <td>{{ t.created_display }}</td>
+                <td>{{ t.finished_display }}</td>
                 <td>
                     {% if t.status in ['QUEUED', 'RUNNING'] %}
                     <button type="button" @click="cancelTask('{{ t.id }}')" style="padding:0.2rem 0.5rem; font-size:0.8rem;">Annuler</button>

@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 
 from core.db import init_db
 from core.logging_setup import get_logger
+from core.timeutil import format_timestamp
 from system.healthcheck import run_all_checks
 from system.monitor import get_platform_info, get_snapshot, resource_level
 from tasks import manager as task_manager
@@ -171,6 +172,9 @@ def create_app() -> FastAPI:
     @app.get("/partials/tasks", response_class=HTMLResponse)
     def partial_tasks(request: Request) -> HTMLResponse:
         tasks = task_manager.list_tasks(limit=20)
+        for t in tasks:
+            t["created_display"] = format_timestamp(t.get("created_at"))
+            t["finished_display"] = format_timestamp(t.get("finished_at"))
         return templates.TemplateResponse(
             request,
             "partials/tasks.html",
