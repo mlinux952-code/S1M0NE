@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from core.config import Settings, load_settings
+from core.config import PROJECT_ROOT, Settings, load_settings
 
 
 def test_config_toml_loads_and_has_expected_sections():
@@ -13,9 +13,11 @@ def test_config_toml_loads_and_has_expected_sections():
 
 
 def test_data_dir_defaults_inside_project():
+    # Le dossier de données par défaut doit être un sous-dossier du projet, quel que soit
+    # le nom du dossier de clone (ex: "S1M0NE", "s1mone_test_clone", etc.).
     s = load_settings()
     assert s.data_dir.is_absolute()
-    assert "S1M0NE" in str(s.data_dir)
+    assert s.data_dir.is_relative_to(PROJECT_ROOT)
 
 
 def test_env_override_for_data_dir(tmp_path, monkeypatch):
