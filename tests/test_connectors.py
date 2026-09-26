@@ -9,6 +9,7 @@ import pytest
 
 from connectors.base import Connector, SearchResult
 from connectors.engine import available_connectors, search_all
+from connectors.github import GitHubConnector
 from connectors.huggingface import HuggingFaceConnector
 from connectors.npm import NpmConnector
 
@@ -163,6 +164,127 @@ def test_huggingface_connector_real_network_smoke_test():
 def test_available_connectors_lists_huggingface():
     names = [c["name"] for c in available_connectors()]
     assert "huggingface" in names
+
+
+GITHUB_SAMPLE_RESPONSE = {
+    "total_count": 1,
+    "items": [
+        {
+            "full_name": "facebook/react",
+            "description": "The library for web and native user interfaces.",
+            "html_url": "https://github.com/facebook/react",
+            "stargazers_count": 250000,
+            "forks_count": 51000,
+            "language": "JavaScript",
+            "owner": {"login": "facebook"},
+        },
+        {
+            # entrée volontairement mal formée (pas de full_name) : doit être ignorée
+            "description": "dépôt cassé",
+        },
+    ],
+}
+
+
+def _mock_github_client(payload, status_code: int = 200, captured_headers: dict | None = None):
+    def handler(request: httpx.Request) -> httpx.Response:
+        if captured_headers is not None:
+            captured_headers.update(dict(request.headers))
+        return httpx.Response(status_code, json=payload)
+
+    transport = httpx.MockTransport(handler)
+    return httpx.AsyncClient(transport=transport)
+
+
+def test_github_connector_parses_results_and_skips_malformed_entries():
+    async def scenario():
+        client = _mock_github_client(GITHUB_SAMPLE_RESPONSE)
+        connector = GitHubConnector(client=client)
+        try:
+            return await connector.search("react", limit=5)
+        finally:
+            await client.aclose()
+
+    results = asyncio.run(scenario())
+
+    assert len(results) == 1  # l'entrée sans full_name a bien été ignorée, pas inventée
+    assert results[0].source == "github"
+    assert results[0].name == "facebook/react"
+    assert results[0].extra["stars"] == 250000
+    assert results[0].extra["owner"] == "facebook"
+
+
+def test_github_connector_raises_on_http_error():
+    async def scenario():
+        client = _mock_github_client({}, status_code=503)
+        connector = GitHubConnector(client=client)
+        try:
+            await connector.search("react")
+        finally:
+            await client.aclose()
+
+    try:
+        asyncio.run(scenario())
+        raised = False
+    except httpx.HTTPStatusError:
+        raised = True
+    assert raised
+
+
+def test_github_connector_sends_token_when_configured(monkeypatch):
+    import connectors.github as github_module
+
+    monkeypatch.setattr(github_module.settings, "get_secret", lambda name, default=None: "fake-token-123")
+
+    captured: dict = {}
+
+    async def scenario():
+        client = _mock_github_client(GITHUB_SAMPLE_RESPONSE, captured_headers=captured)
+        connector = GitHubConnector(client=client)
+        try:
+            return await connector.search("react")
+        finally:
+            await client.aclose()
+
+    asyncio.run(scenario())
+    assert captured.get("authorization") == "Bearer fake-token-123"
+
+
+def test_github_connector_works_without_token(monkeypatch):
+    import connectors.github as github_module
+
+    monkeypatch.setattr(github_module.settings, "get_secret", lambda name, default=None: None)
+
+    captured: dict = {}
+
+    async def scenario():
+        client = _mock_github_client(GITHUB_SAMPLE_RESPONSE, captured_headers=captured)
+        connector = GitHubConnector(client=client)
+        try:
+            return await connector.search("react")
+        finally:
+            await client.aclose()
+
+    results = asyncio.run(scenario())
+    assert "authorization" not in captured
+    assert len(results) == 1
+
+
+def test_github_connector_real_network_smoke_test():
+    """Test réel (pas de mock) contre la vraie API GitHub : vérifie que le pipeline complet
+    fonctionne pour de vrai (règle du projet : toujours vérifier réellement plutôt que
+    supposer). Volontairement un seul test réseau réel pour ce connecteur (quota le plus
+    contraint des trois : 10 req/min sans token)."""
+    connector = GitHubConnector()
+    results = asyncio.run(connector.search("react", limit=5))
+    assert len(results) > 0
+    assert any("react" in r.name.lower() for r in results)
+    assert all(r.source == "github" for r in results)
+
+
+def test_available_connectors_lists_github():
+    names = [c["name"] for c in available_connectors()]
+    assert "github" in names
 
 
 class _FailingConnector(Connector):
