@@ -17,16 +17,20 @@ from connectors.base import Connector
 from connectors.npm import NpmConnector
 from connectors.huggingface import HuggingFaceConnector
 from connectors.github import GitHubConnector
+from connectors.gitlab import GitLabConnector
+from connectors.codeberg import CodebergConnector
 
 logger = get_logger("s1mone.connectors")
 
-# Registre statique des connecteurs disponibles (Phase 5, étape 3 : npm + Hugging Face + GitHub).
-# Les prochains (GitLab/Codeberg, PyPI...) s'ajouteront ici un par un, chacun testé
-# individuellement avant d'être branché, comme convenu.
+# Registre statique des connecteurs disponibles (Phase 5, étape 4 : + GitLab + Codeberg).
+# Le prochain (PyPI, en mode dégradé transparent) s'ajoutera ici, testé individuellement
+# avant d'être branché, comme convenu.
 _CONNECTORS: dict[str, Connector] = {
     "npm": NpmConnector(),
     "huggingface": HuggingFaceConnector(),
     "github": GitHubConnector(),
+    "gitlab": GitLabConnector(),
+    "codeberg": CodebergConnector(),
 }
 
 

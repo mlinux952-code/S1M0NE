@@ -8,8 +8,10 @@ import httpx
 import pytest
 
 from connectors.base import Connector, SearchResult
+from connectors.codeberg import CodebergConnector
 from connectors.engine import available_connectors, search_all
 from connectors.github import GitHubConnector
+from connectors.gitlab import GitLabConnector
 from connectors.huggingface import HuggingFaceConnector
 from connectors.npm import NpmConnector
 
@@ -285,6 +287,138 @@ def test_github_connector_real_network_smoke_test():
 def test_available_connectors_lists_github():
     names = [c["name"] for c in available_connectors()]
     assert "github" in names
+
+
+GITLAB_SAMPLE_RESPONSE = [
+    {
+        "path_with_namespace": "gitlab-org/gitlab",
+        "description": "GitLab CE/EE",
+        "web_url": "https://gitlab.com/gitlab-org/gitlab",
+        "star_count": 25000,
+        "forks_count": 5000,
+    },
+    {
+        # entrée volontairement mal formée (pas de path_with_namespace) : doit être ignorée
+        "description": "projet cassé",
+    },
+]
+
+
+def _mock_json_client(payload, status_code: int = 200) -> httpx.AsyncClient:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(status_code, json=payload)
+
+    transport = httpx.MockTransport(handler)
+    return httpx.AsyncClient(transport=transport)
+
+
+def test_gitlab_connector_parses_results_and_skips_malformed_entries():
+    async def scenario():
+        client = _mock_json_client(GITLAB_SAMPLE_RESPONSE)
+        connector = GitLabConnector(client=client)
+        try:
+            return await connector.search("gitlab", limit=5)
+        finally:
+            await client.aclose()
+
+    results = asyncio.run(scenario())
+
+    assert len(results) == 1  # l'entrée sans path_with_namespace a bien été ignorée
+    assert results[0].source == "gitlab"
+    assert results[0].name == "gitlab-org/gitlab"
+    assert results[0].extra["stars"] == 25000
+
+
+def test_gitlab_connector_raises_on_http_error():
+    async def scenario():
+        client = _mock_json_client([], status_code=503)
+        connector = GitLabConnector(client=client)
+        try:
+            await connector.search("gitlab")
+        finally:
+            await client.aclose()
+
+    try:
+        asyncio.run(scenario())
+        raised = False
+    except httpx.HTTPStatusError:
+        raised = True
+    assert raised
+
+
+def test_gitlab_connector_real_network_smoke_test():
+    """Test réel (pas de mock) contre la vraie API GitLab."""
+    connector = GitLabConnector()
+    results = asyncio.run(connector.search("react", limit=5))
+    assert len(results) > 0
+    assert all(r.source == "gitlab" for r in results)
+
+
+CODEBERG_SAMPLE_RESPONSE = {
+    "ok": True,
+    "data": [
+        {
+            "full_name": "forgejo/forgejo",
+            "description": "Beyond coding. We forge.",
+            "html_url": "https://codeberg.org/forgejo/forgejo",
+            "stars_count": 3000,
+            "forks_count": 300,
+            "language": "Go",
+        },
+        {
+            # entrée volontairement mal formée (pas de full_name) : doit être ignorée
+            "description": "dépôt cassé",
+        },
+    ],
+}
+
+
+def test_codeberg_connector_parses_results_and_skips_malformed_entries():
+    async def scenario():
+        client = _mock_json_client(CODEBERG_SAMPLE_RESPONSE)
+        connector = CodebergConnector(client=client)
+        try:
+            return await connector.search("forgejo", limit=5)
+        finally:
+            await client.aclose()
+
+    results = asyncio.run(scenario())
+
+    assert len(results) == 1  # l'entrée sans full_name a bien été ignorée
+    assert results[0].source == "codeberg"
+    assert results[0].name == "forgejo/forgejo"
+    assert results[0].extra["language"] == "Go"
+
+
+def test_codeberg_connector_raises_on_http_error():
+    async def scenario():
+        client = _mock_json_client({}, status_code=503)
+        connector = CodebergConnector(client=client)
+        try:
+            await connector.search("forgejo")
+        finally:
+            await client.aclose()
+
+    try:
+        asyncio.run(scenario())
+        raised = False
+    except httpx.HTTPStatusError:
+        raised = True
+    assert raised
+
+
+def test_codeberg_connector_real_network_smoke_test():
+    """Test réel (pas de mock) contre la vraie API Codeberg."""
+    connector = CodebergConnector()
+    results = asyncio.run(connector.search("forgejo", limit=5))
+    assert len(results) > 0
+    assert all(r.source == "codeberg" for r in results)
+
+
+def test_available_connectors_lists_gitlab_and_codeberg():
+    names = [c["name"] for c in available_connectors()]
+    assert "gitlab" in names
+    assert "codeberg" in names
 
 
 class _FailingConnector(Connector):
