@@ -5,11 +5,9 @@
 
 ## État actuel
 
-- **Phase en cours : PHASE 0 — DÉCOUVERTE**
-- **Statut : terminée côté agent, EN ATTENTE DE VALIDATION UTILISATEUR** avant de démarrer la
-  Phase 1 (fondation / code).
-- Aucune ligne de code applicatif n'a encore été écrite (conforme à la règle "ne code pas trop
-  tôt").
+- **PHASE 0 — DÉCOUVERTE : terminée et validée.**
+- **PHASE 1 — FONDATION : terminée et testée (15/15 tests, install.sh validé sur clone propre).**
+- Prochaine phase à valider avec l'utilisateur avant démarrage : **PHASE 2 — INTERFACE WEB**.
 
 ## Contexte d'exécution important
 
@@ -29,13 +27,29 @@
 - [x] `DECISIONS.md` (choix figés, statut PROPOSED en attente de test réel).
 - [x] `scripts/audit_system.sh` (script d'audit lecture seule pour la vraie machine).
 
+## Fonctionnalités terminées — Phase 1 (nouveau)
+
+- [x] `core/config.py` — Configuration Manager (config.toml + .env, secrets jamais dans le TOML,
+      masquage automatique dans les logs). 5 tests.
+- [x] `core/logging_setup.py` — Logging Manager (rotation, filtre anti-fuite de secrets). Vérifié
+      manuellement (un `token=...` injecté n'apparaît jamais en clair dans `logs/s1mone.log`).
+- [x] `core/db.py` — Storage Manager SQLite (tables `tasks`, `memory`, `cache`, `projects`,
+      `schema_meta`), idempotent, WAL activé. 4 tests.
+- [x] `system/monitor.py` + `system/healthcheck.py` — System Manager (psutil : CPU/RAM/swap/disque,
+      classification NORMAL/WARNING/CRITICAL) + auto-diagnostic. 3 tests.
+- [x] `cli/main.py` — Terminal Gateway (Typer + Rich) : `s1mone status`, `s1mone system`,
+      `s1mone version`. 3 tests.
+- [x] `pyproject.toml` + `install.sh` — installation reproductible, **validée deux fois de bout en
+      bout sur un clone Git propre** (venv, dépendances, dossiers, `.env`, SQLite, tests → 15/15).
+- [x] Bug réel détecté et corrigé pendant les tests d'installation : un test supposait à tort que
+      le dossier de clone s'appelait "S1M0NE" (corrigé pour être indépendant du nom du dossier).
+
 ## En cours / en attente
 
-- [ ] Validation utilisateur des décisions D1 à D11 avant tout code.
 - [ ] Exécution de `scripts/audit_system.sh` sur la machine réelle (optionnel mais recommandé) et
       mise à jour de `SYSTEM_PROFILE.md` avec le statut `VERIFIED`.
-- [ ] Démarrage de la **PHASE 1 — FONDATION** : configuration, logs, SQLite, CLI minimale
-      (`s1mone status`, `s1mone system`), health check. Pas avant validation.
+- [ ] Validation utilisateur avant de démarrer la **PHASE 2 — INTERFACE WEB** (FastAPI + Jinja2 +
+      htmx/Alpine.js, dashboard + terminal web minimal).
 
 ## Problèmes connus / points de vigilance identifiés pendant la recherche
 
@@ -63,12 +77,12 @@
 
 ## Prochaine étape (après validation)
 
-**PHASE 1 — FONDATION**, découpée en petites unités selon la règle de communication (§30/§33) :
-1. Structure de dossiers + `config.toml` + `.env.example` + `.gitignore`.
-2. Logging structuré avec rotation.
-3. Module SQLite + schéma initial (tables `tasks`, `cache`, `memory`, `projects`).
-4. CLI minimale : `s1mone status`, `s1mone system` (affiche CPU/RAM/disque via `psutil`).
-5. Tests de base + premier commit Git propre.
+**PHASE 2 — INTERFACE WEB** (mega-prompt §7/§9), découpée en petites unités :
+1. Serveur FastAPI minimal (réutilise `core.config`, `core.logging_setup`).
+2. Endpoint santé `/api/status` (réutilise `system.healthcheck.run_all_checks`).
+3. Dashboard HTML (Jinja2) affichant CPU/RAM/disque en direct (polling htmx).
+4. Terminal web minimal (à définir : rejouer les commandes CLI existantes via l'API).
+5. Tests d'intégration API (TestClient FastAPI) + commit.
 
 Chaque étape suivra le format imposé : OBJECTIF → FICHIERS → CODE → INSTALLATION → TEST →
 RÉSULTAT ATTENDU → RÉSULTAT OBTENU → PROBLÈMES → PROCHAINE ÉTAPE.
