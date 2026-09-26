@@ -12,6 +12,11 @@ cette CLI ne dépend d'aucun serveur, elle appelle directement les modules core/
 
 from __future__ import annotations
 
+import asyncio
+import json
+from datetime import datetime
+from typing import Optional
+
 import typer
 from rich.console import Console
 from rich.table import Table
@@ -19,6 +24,15 @@ from rich.table import Table
 from core.config import settings
 from system.healthcheck import run_all_checks
 from system.monitor import get_platform_info, get_snapshot, resource_level
+from tasks.manager import (
+    cancel_task,
+    get_task,
+    list_tasks,
+    run_pending_tasks,
+    submit_task,
+    worker_loop,
+)
+from tasks.registry import available_types
 
 app = typer.Typer(
     name="s1mone",
@@ -27,7 +41,31 @@ app = typer.Typer(
 )
 console = Console()
 
+task_app = typer.Typer(help="Gestion des tâches (Task Manager).")
+app.add_typer(task_app, name="task")
+
+
+@app.callback()
+def _ensure_ready() -> None:
+    """Exécuté avant chaque commande : garantit que la base SQLite existe déjà (idempotent)."""
+    from core.db import init_db
+
+    init_db()
+
 _LEVEL_COLORS = {"NORMAL": "green", "WARNING": "yellow", "CRITICAL": "bold red"}
+_STATUS_COLORS = {
+    "QUEUED": "white",
+    "RUNNING": "yellow",
+    "SUCCESS": "green",
+    "FAILED": "bold red",
+    "CANCELLED": "grey58",
+}
+
+
+def _fmt_ts(ts: float | None) -> str:
+    if not ts:
+        return "-"
+    return datetime.fromtimestamp(ts).strftime("%H:%M:%S")
 
 
 @app.command()
@@ -108,6 +146,107 @@ def version() -> None:
     info = get_platform_info()
     console.print("[bold]S1M0NE[/bold] — v0.1.0 (Phase 1 : Fondation)")
     console.print(f"Python {info['python_version']} sur {info['system']} {info['release']}")
+
+
+@task_app.command("submit")
+def task_submit(
+    task_type: str = typer.Argument(
+        ..., help=f"Type de tâche. Disponibles : {', '.join(available_types())}"
+    ),
+    param: list[str] = typer.Option(
+        [], "--param", help="Paramètre au format clé=valeur (répétable)."
+    ),
+) -> None:
+    """Ajoute une tâche à la file d'attente (QUEUED). Ne l'exécute pas immédiatement."""
+    parameters: dict[str, str] = {}
+    for item in param:
+        if "=" not in item:
+            console.print(f"[red]Paramètre invalide (attendu clé=valeur) : {item}[/red]")
+            raise typer.Exit(code=1)
+        key, value = item.split("=", 1)
+        parameters[key] = value
+
+    try:
+        task_id = submit_task(task_type, parameters)
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=1)
+
+    console.print(f"[green]Tâche créée :[/green] {task_id}  (type={task_type}, status=QUEUED)")
+    console.print(
+        "Elle sera exécutée par 's1mone task worker' ou automatiquement si 's1mone web' tourne."
+    )
+
+
+@task_app.command("list")
+def task_list(
+    status: Optional[str] = typer.Option(None, help="Filtrer par statut (QUEUED/RUNNING/...)."),
+    limit: int = typer.Option(20, help="Nombre maximum de tâches affichées."),
+) -> None:
+    """Liste les tâches (les plus récentes d'abord)."""
+    tasks = list_tasks(status=status, limit=limit)
+    table = Table(title="S1M0NE — tâches")
+    table.add_column("ID")
+    table.add_column("Type")
+    table.add_column("Statut")
+    table.add_column("Créée à")
+    table.add_column("Terminée à")
+
+    for t in tasks:
+        color = _STATUS_COLORS.get(t["status"], "white")
+        table.add_row(
+            t["id"],
+            t["type"],
+            f"[{color}]{t['status']}[/{color}]",
+            _fmt_ts(t["created_at"]),
+            _fmt_ts(t["finished_at"]),
+        )
+    console.print(table)
+    if not tasks:
+        console.print("[grey58]Aucune tâche pour ce filtre.[/grey58]")
+
+
+@task_app.command("show")
+def task_show(task_id: str) -> None:
+    """Affiche le détail complet d'une tâche (paramètres, résultat, erreur)."""
+    task = get_task(task_id)
+    if not task:
+        console.print(f"[red]Tâche introuvable : {task_id}[/red]")
+        raise typer.Exit(code=1)
+    console.print_json(json.dumps(task))
+
+
+@task_app.command("cancel")
+def task_cancel(task_id: str) -> None:
+    """Annule une tâche : immédiatement si QUEUED, vraie annulation asyncio si RUNNING."""
+    ok = cancel_task(task_id)
+    if ok:
+        console.print(f"[yellow]Annulation effectuée pour {task_id}.[/yellow]")
+    else:
+        console.print(
+            f"[red]Impossible d'annuler {task_id} (introuvable, déjà terminée, ou pas de worker actif).[/red]"
+        )
+        raise typer.Exit(code=1)
+
+
+@task_app.command("worker")
+def task_worker(
+    once: bool = typer.Option(
+        False, help="Traiter le lot de tâches en attente une seule fois, puis quitter."
+    ),
+    interval: float = typer.Option(2.0, help="Secondes entre deux passages (mode continu)."),
+) -> None:
+    """Démarre un worker de tâches en CLI (utile sans lancer l'interface web)."""
+    if once:
+        processed = asyncio.run(run_pending_tasks())
+        console.print(f"{processed} tâche(s) traitée(s).")
+        return
+
+    console.print("Worker de tâches démarré (CTRL+C pour arrêter)...")
+    try:
+        asyncio.run(worker_loop(interval_seconds=interval))
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Worker arrêté.[/yellow]")
 
 
 def main() -> None:
