@@ -10,7 +10,28 @@
 - **PHASE 2 — INTERFACE WEB : terminée, testée ET VALIDÉE SUR LA VRAIE MACHINE** (dashboard live
   vérifié dans le navigateur sur omrane-Inspiron-3520 : RAM/CPU/disque réels affichés,
   auto-diagnostic OK, page Terminal Web fonctionnelle, 23/23 tests passés lors de l'installation).
-- Prochaine phase à valider avec l'utilisateur avant démarrage : **PHASE 3 — TASK MANAGER**.
+- **PHASE 3 — TASK MANAGER : terminée et testée DANS LE SANDBOX UNIQUEMENT.** Pas encore livrée
+  ni installée sur la machine réelle (omrane-Inspiron-3520) à ce stade — la prochaine livraison
+  (zip sans `.git`) l'apportera. Ne pas confondre "testé en sandbox" et "validé sur la machine
+  réelle" tant que l'utilisateur n'a pas confirmé l'installation chez lui.
+
+## Fonctionnalités terminées — Phase 3 (nouveau, SANDBOX SEULEMENT — pas encore sur la machine réelle)
+
+- [x] `tasks/registry.py` + `tasks/manager.py` — Task Manager 100% maison (asyncio + SQLite,
+      aucune dépendance Redis/Celery/RQ/Huey/arq, cf. DECISIONS.md). Cycle de vie complet
+      QUEUED → RUNNING → SUCCESS/FAILED/CANCELLED, annulation réelle même en cours d'exécution.
+- [x] Parallélisme dynamique lié au Resource Manager (`system.monitor.resource_level`) :
+      NORMAL → 2 tâches, WARNING → 1, CRITICAL → 0 nouvelle tâche (config dans `config.toml`).
+- [x] Types de tâches enregistrés : `sleep` (démo/tests) et `system_snapshot` (réutilise
+      `system.monitor`, sans dupliquer de logique).
+- [x] CLI `s1mone task submit/list/show/cancel/worker` — testée manuellement en conditions
+      réelles (pas seulement via pytest) ; a révélé et corrigé 2 bugs réels (DB non initialisée
+      au premier lancement, paquet `tasks` absent de `pyproject.toml`).
+- [x] Intégration web : le worker tourne **dans le même processus** que `s1mone web` (lifespan
+      FastAPI, démarrage/arrêt propre), endpoints `/api/tasks`, `/api/tasks/{id}`,
+      `/api/tasks/{id}/cancel`, `/api/task-types`, panneau "Tâches" live sur le dashboard
+      (htmx + bouton de démonstration Alpine.js). Validé avec un vrai serveur uvicorn + curl.
+- [x] 45/45 tests passent dans le sandbox (37 précédents + 8 nouveaux pour l'intégration web).
 
 ## Fonctionnalités terminées — Phase 2 (nouveau)
 
