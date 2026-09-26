@@ -1,0 +1,13 @@
+venv/
+.venv/
+__pycache__/
+*.pyc
+.env
+*.db
+*.sqlite3
+cache/
+logs/
+data/
+audit_output.txt
+.DS_Store
+node_modules/
