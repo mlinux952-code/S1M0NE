@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<h1>Dashboard</h1>
+<p class="hint">Cette page interroge <code>/api/system</code> et <code>/api/health</code> toutes
+   les 3 secondes (htmx) — exactement les mêmes fonctions Python que <code>s1mone status</code>
+   et <code>s1mone system</code> en CLI, aucune logique dupliquée.</p>
+
+<section id="system-panel"
+         hx-get="/partials/system"
+         hx-trigger="load, every 3s"
+         hx-swap="innerHTML">
+    <p>Chargement…</p>
+</section>
+
+<section id="health-panel"
+         hx-get="/partials/health"
+         hx-trigger="load, every 10s"
+         hx-swap="innerHTML">
+    <p>Chargement…</p>
+</section>
+{% endblock %}

@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>S1M0NE — {% block title %}Dashboard{% endblock %}</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="/static/vendor/htmx.min.js"></script>
+    <script defer src="/static/vendor/alpine.min.js"></script>
+</head>
+<body>
+    <header class="topbar">
+        <div class="brand">S1M0NE <span class="tagline">maison numérique</span></div>
+        <nav>
+            <a href="/">Dashboard</a>
+            <a href="/terminal">Terminal</a>
+            <span class="disabled" title="Arrive en Phase 4">Recherche</span>
+            <span class="disabled" title="Arrive en Phase 3">Tâches</span>
+            <span class="disabled" title="Arrive en Phase 5">Plugins</span>
+            <span class="disabled" title="Arrive en Phase 7">Mémoire</span>
+            <span class="disabled" title="Bientôt">Paramètres</span>
+        </nav>
+    </header>
+    <main class="content">
+        {% block content %}{% endblock %}
+    </main>
+    <footer class="footer">
+        S1M0NE v0.2.0 — Phase 2 (Interface Web) — low-resource first
+    </footer>
+</body>
+</html>

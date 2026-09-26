@@ -1,0 +1,17 @@
+<div class="card">
+    <h2>Ressources système
+        <span class="badge badge-{{ 'ok' if level == 'NORMAL' else ('warn' if level == 'WARNING' else 'crit') }}">
+            {{ level }}
+        </span>
+    </h2>
+    <table>
+        <tr><th>OS</th><td>{{ platform.system }} {{ platform.release }}</td></tr>
+        <tr><th>Python</th><td>{{ platform.python_version }}</td></tr>
+        <tr><th>CPU cœurs</th><td>{{ resources.cpu_count_physical }} physiques / {{ resources.cpu_count_logical }} logiques</td></tr>
+        <tr><th>CPU utilisation</th><td>{{ resources.cpu_percent }} %</td></tr>
+        <tr><th>RAM</th><td>{{ resources.ram_available_gb }} Gio libres / {{ resources.ram_total_gb }} Gio ({{ resources.ram_percent_used }} % utilisés)</td></tr>
+        <tr><th>Swap</th><td>{{ resources.swap_used_gb }} / {{ resources.swap_total_gb }} Gio ({{ resources.swap_percent_used }} % utilisés)</td></tr>
+        <tr><th>Disque (DATA_DIR)</th><td>{{ resources.disk_free_gb }} Gio libres / {{ resources.disk_total_gb }} Gio ({{ resources.disk_percent_used }} % utilisés)</td></tr>
+    </table>
+    <p class="muted">Dernière actualisation : rafraîchi automatiquement toutes les 3s.</p>
+</div>

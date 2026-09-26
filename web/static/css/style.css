@@ -1,0 +1,92 @@
+/* S1M0NE — CSS minimal, sans framework, sans étape de build (mega-prompt : léger, low-resource). */
+
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: #0f1115;
+    color: #e6e6e6;
+}
+
+.topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.8rem 1.5rem;
+    background: #171a21;
+    border-bottom: 1px solid #2a2e37;
+}
+
+.brand { font-weight: 700; font-size: 1.2rem; color: #6fd39a; }
+.brand .tagline { font-weight: 400; font-size: 0.8rem; color: #8a8f98; margin-left: 0.5rem; }
+
+nav a, nav span {
+    margin-left: 1.2rem;
+    color: #cfd3da;
+    text-decoration: none;
+    font-size: 0.95rem;
+}
+nav a:hover { color: #6fd39a; }
+nav .disabled { color: #4a4f58; cursor: not-allowed; }
+
+.content { max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
+
+h1 { color: #ffffff; }
+
+.hint { color: #9aa0aa; font-size: 0.9rem; margin-bottom: 1.5rem; }
+
+.card {
+    background: #171a21;
+    border: 1px solid #2a2e37;
+    border-radius: 8px;
+    padding: 1rem 1.5rem;
+    margin-bottom: 1.2rem;
+}
+
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 0.4rem 0.5rem; border-bottom: 1px solid #262a33; font-size: 0.92rem; }
+th { color: #9aa0aa; width: 40%; font-weight: 500; }
+
+.badge {
+    display: inline-block;
+    padding: 0.1rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    margin-left: 0.5rem;
+}
+.badge-ok { background: #163b2a; color: #6fd39a; }
+.badge-warn { background: #3b3416; color: #e0c34a; }
+.badge-crit { background: #3b1616; color: #e05a5a; }
+
+.muted { color: #6a6f78; font-size: 0.8rem; }
+
+select, button {
+    background: #171a21;
+    color: #e6e6e6;
+    border: 1px solid #2a2e37;
+    border-radius: 6px;
+    padding: 0.5rem 0.8rem;
+    font-size: 0.95rem;
+}
+button { background: #1f5b3d; border-color: #2a7a52; cursor: pointer; margin-left: 0.5rem; }
+button:hover { background: #26714a; }
+
+.terminal-output {
+    margin-top: 1rem;
+    background: #000000;
+    color: #6fd39a;
+    padding: 1rem;
+    border-radius: 6px;
+    overflow-x: auto;
+    font-family: "JetBrains Mono", "Fira Code", monospace;
+    font-size: 0.85rem;
+}
+
+.footer {
+    text-align: center;
+    color: #4a4f58;
+    font-size: 0.8rem;
+    padding: 1.5rem;
+}

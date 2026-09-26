@@ -1,0 +1,14 @@
+<div class="card">
+    <h2>Diagnostic (auto-check) <span class="badge badge-{{ 'ok' if overall_ok else 'crit' }}">{{ 'OK' if overall_ok else 'KO' }}</span></h2>
+    <table>
+        {% for check in checks %}
+        <tr>
+            <th>{{ check.name }}</th>
+            <td>
+                <span class="badge badge-{{ 'ok' if check.ok else 'crit' }}">{{ 'OK' if check.ok else 'KO' }}</span>
+                {{ check.detail or check.reason or '' }}
+            </td>
+        </tr>
+        {% endfor %}
+    </table>
+</div>

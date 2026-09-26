@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Terminal{% endblock %}
+{% block content %}
+<h1>Terminal Web</h1>
+<p class="hint">
+    Par sécurité (mega-prompt §15/§31), ce terminal web n'exécute <strong>aucune commande shell
+    arbitraire</strong>. Seules ces commandes en lecture seule sont autorisées pour l'instant :
+    {% for c in allowed_commands %}<code>{{ c }}</code>{% if not loop.last %}, {% endif %}{% endfor %}.
+    Un vrai terminal (avec permissions/confirmation) arrive en Phase 9 (Sécurité).
+</p>
+
+<div x-data="{ output: null, command: '{{ allowed_commands[0] }}' }">
+    <select x-model="command">
+        {% for c in allowed_commands %}
+        <option value="{{ c }}">{{ c }}</option>
+        {% endfor %}
+    </select>
+    <button
+        @click="
+            fetch('/api/cli/' + command)
+                .then(r => r.json())
+                .then(data => output = JSON.stringify(data, null, 2))
+        "
+    >Exécuter</button>
+
+    <pre x-show="output" x-text="output" class="terminal-output"></pre>
+</div>
+{% endblock %}
