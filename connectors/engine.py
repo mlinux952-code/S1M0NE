@@ -15,14 +15,16 @@ from core.cache import cache_get, cache_set, make_key
 from core.logging_setup import get_logger
 from connectors.base import Connector
 from connectors.npm import NpmConnector
+from connectors.huggingface import HuggingFaceConnector
 
 logger = get_logger("s1mone.connectors")
 
-# Registre statique des connecteurs disponibles (Phase 5, étape 1 : npm uniquement).
-# Les prochains (Hugging Face, GitHub, GitLab/Codeberg, PyPI...) s'ajouteront ici un par un,
-# chacun testé individuellement avant d'être branché, comme convenu.
+# Registre statique des connecteurs disponibles (Phase 5, étape 2 : npm + Hugging Face).
+# Les prochains (GitHub, GitLab/Codeberg, PyPI...) s'ajouteront ici un par un, chacun testé
+# individuellement avant d'être branché, comme convenu.
 _CONNECTORS: dict[str, Connector] = {
     "npm": NpmConnector(),
+    "huggingface": HuggingFaceConnector(),
 }
 
 

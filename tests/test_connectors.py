@@ -9,6 +9,7 @@ import pytest
 
 from connectors.base import Connector, SearchResult
 from connectors.engine import available_connectors, search_all
+from connectors.huggingface import HuggingFaceConnector
 from connectors.npm import NpmConnector
 
 
@@ -86,6 +87,82 @@ def test_npm_connector_raises_on_http_error():
     except httpx.HTTPStatusError:
         raised = True
     assert raised
+
+
+HF_SAMPLE_RESPONSE = [
+    {
+        "id": "google-bert/bert-base-uncased",
+        "downloads": 43907375,
+        "likes": 3376,
+        "pipeline_tag": "fill-mask",
+        "library_name": "transformers",
+        "tags": ["transformers", "pytorch", "bert"],
+    },
+    {
+        # entrée volontairement mal formée (pas d'id/modelId) : doit être ignorée, jamais inventée
+        "downloads": 0,
+        "likes": 0,
+    },
+]
+
+
+def _mock_hf_client(payload, status_code: int = 200) -> httpx.AsyncClient:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(status_code, json=payload)
+
+    transport = httpx.MockTransport(handler)
+    return httpx.AsyncClient(transport=transport)
+
+
+def test_huggingface_connector_parses_results_and_skips_malformed_entries():
+    async def scenario():
+        client = _mock_hf_client(HF_SAMPLE_RESPONSE)
+        connector = HuggingFaceConnector(client=client)
+        try:
+            return await connector.search("bert", limit=5)
+        finally:
+            await client.aclose()
+
+    results = asyncio.run(scenario())
+
+    assert len(results) == 1  # l'entrée sans id a bien été ignorée, pas inventée
+    assert results[0].source == "huggingface"
+    assert results[0].name == "google-bert/bert-base-uncased"
+    assert results[0].url == "https://huggingface.co/google-bert/bert-base-uncased"
+    assert results[0].extra["downloads"] == 43907375
+
+
+def test_huggingface_connector_raises_on_http_error():
+    async def scenario():
+        client = _mock_hf_client([], status_code=503)
+        connector = HuggingFaceConnector(client=client)
+        try:
+            await connector.search("bert")
+        finally:
+            await client.aclose()
+
+    try:
+        asyncio.run(scenario())
+        raised = False
+    except httpx.HTTPStatusError:
+        raised = True
+    assert raised
+
+
+def test_huggingface_connector_real_network_smoke_test():
+    """Test réel (pas de mock) contre la vraie API Hugging Face Hub : vérifie que le pipeline
+    complet fonctionne pour de vrai (règle du projet : toujours vérifier réellement plutôt que
+    supposer)."""
+    connector = HuggingFaceConnector()
+    results = asyncio.run(connector.search("bert", limit=5))
+    assert len(results) > 0
+    assert any("bert" in r.name.lower() for r in results)
+    assert all(r.source == "huggingface" for r in results)
+
+
+def test_available_connectors_lists_huggingface():
+    names = [c["name"] for c in available_connectors()]
+    assert "huggingface" in names
 
 
 class _FailingConnector(Connector):
