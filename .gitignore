@@ -11,3 +11,6 @@ data/
 audit_output.txt
 .DS_Store
 node_modules/
+*.egg-info/
+build/
+dist/
