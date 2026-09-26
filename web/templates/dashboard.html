@@ -19,4 +19,11 @@
          hx-swap="innerHTML">
     <p>Chargement…</p>
 </section>
+
+<section id="tasks-panel"
+         hx-get="/partials/tasks"
+         hx-trigger="load, every 3s"
+         hx-swap="innerHTML">
+    <p>Chargement…</p>
+</section>
 {% endblock %}

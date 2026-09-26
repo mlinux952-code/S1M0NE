@@ -1,0 +1,69 @@
+<div class="card" x-data="{
+        submitting: false,
+        message: '',
+        async submitDemoTask() {
+            this.submitting = true;
+            this.message = '';
+            try {
+                const res = await fetch('/api/tasks', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({type: 'sleep', parameters: {seconds: 3}})
+                });
+                const data = await res.json();
+                if (!res.ok) { throw new Error(data.detail || 'Erreur inconnue'); }
+                this.message = 'Tâche démo soumise : ' + data.task.id.slice(0, 8) + '… (sleep 3s)';
+            } catch (err) {
+                this.message = 'Échec : ' + err.message;
+            } finally {
+                this.submitting = false;
+            }
+        },
+        async cancelTask(taskId) {
+            try {
+                await fetch('/api/tasks/' + taskId + '/cancel', {method: 'POST'});
+            } catch (err) { /* le panneau se rafraîchira de toute façon via htmx */ }
+        }
+    }">
+    <h2>Tâches (Task Manager)
+        <span class="badge badge-ok">{{ task_types | length }} type(s) disponible(s)</span>
+    </h2>
+    <p class="hint">Le worker tourne en arrière-plan dans ce même processus <code>s1mone web</code>
+        (aucun service supplémentaire). Démonstration : soumet une tâche "sleep" de 3s et suit
+        son cycle de vie QUEUED → RUNNING → SUCCESS en direct ci-dessous.</p>
+
+    <button type="button" :disabled="submitting" @click="submitDemoTask()">
+        <span x-show="!submitting">Soumettre une tâche démo (sleep 3s)</span>
+        <span x-show="submitting">Envoi…</span>
+    </button>
+    <p class="muted" x-show="message" x-text="message"></p>
+
+    <table>
+        <thead>
+            <tr><th>ID</th><th>Type</th><th>Statut</th><th>Créée</th><th>Terminée</th><th></th></tr>
+        </thead>
+        <tbody>
+        {% for t in tasks %}
+            <tr>
+                <td title="{{ t.id }}">{{ t.id[:8] }}…</td>
+                <td>{{ t.type }}</td>
+                <td>
+                    <span class="badge badge-{{ 'ok' if t.status == 'SUCCESS' else ('crit' if t.status in ['FAILED', 'CANCELLED'] else 'warn') }}">
+                        {{ t.status }}
+                    </span>
+                </td>
+                <td>{{ t.created_at | int }}</td>
+                <td>{{ t.finished_at | int if t.finished_at else '-' }}</td>
+                <td>
+                    {% if t.status in ['QUEUED', 'RUNNING'] %}
+                    <button type="button" @click="cancelTask('{{ t.id }}')" style="padding:0.2rem 0.5rem; font-size:0.8rem;">Annuler</button>
+                    {% endif %}
+                </td>
+            </tr>
+        {% else %}
+            <tr><td colspan="6" class="muted">Aucune tâche pour l'instant.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    <p class="muted">Rafraîchi automatiquement toutes les 3 secondes.</p>
+</div>

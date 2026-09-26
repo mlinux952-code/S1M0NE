@@ -12,6 +12,8 @@ Principes appliqués :
 
 from __future__ import annotations
 
+import asyncio
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -19,10 +21,14 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel, Field
 
+from core.db import init_db
 from core.logging_setup import get_logger
 from system.healthcheck import run_all_checks
 from system.monitor import get_platform_info, get_snapshot, resource_level
+from tasks import manager as task_manager
+from tasks.registry import available_types
 
 logger = get_logger("s1mone.web")
 
@@ -58,8 +64,36 @@ def _run_command(command: str) -> dict[str, Any]:
     raise AssertionError("unreachable")  # garde-fou : ne doit jamais arriver
 
 
+class TaskSubmitRequest(BaseModel):
+    """Corps de requête pour POST /api/tasks (Phase 3 - Task Manager)."""
+
+    type: str
+    parameters: dict[str, Any] = Field(default_factory=dict)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Cycle de vie du processus 's1mone web' : un seul processus permanent qui héberge à la
+    fois le serveur HTTP ET le worker de tâches en tâche de fond (mega-prompt : pas de service
+    supplémentaire, low-resource first). Le worker s'arrête proprement à l'extinction."""
+    init_db()
+    stop_event = asyncio.Event()
+    worker_task = asyncio.create_task(task_manager.worker_loop(interval_seconds=2.0, stop_event=stop_event))
+    logger.info("Worker de tâches démarré en arrière-plan dans le processus web.")
+    try:
+        yield
+    finally:
+        stop_event.set()
+        worker_task.cancel()
+        try:
+            await worker_task
+        except (asyncio.CancelledError, Exception):  # noqa: BLE001
+            pass
+        logger.info("Worker de tâches arrêté proprement.")
+
+
 def create_app() -> FastAPI:
-    app = FastAPI(title="S1M0NE", version="0.2.0")
+    app = FastAPI(title="S1M0NE", version="0.3.0", lifespan=lifespan)
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
     @app.get("/api/health")
@@ -99,6 +133,48 @@ def create_app() -> FastAPI:
             request,
             "partials/health.html",
             {"checks": report["checks"], "overall_ok": report["overall_ok"]},
+        )
+
+    @app.get("/api/task-types")
+    def api_task_types() -> dict[str, Any]:
+        return {"types": available_types()}
+
+    @app.get("/api/tasks")
+    def api_tasks_list(status: str | None = None, limit: int = 50) -> dict[str, Any]:
+        return {"tasks": task_manager.list_tasks(status=status, limit=limit)}
+
+    @app.post("/api/tasks", status_code=201)
+    def api_tasks_submit(payload: TaskSubmitRequest) -> dict[str, Any]:
+        try:
+            task_id = task_manager.submit_task(payload.type, payload.parameters)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"task": task_manager.get_task(task_id)}
+
+    @app.get("/api/tasks/{task_id}")
+    def api_tasks_get(task_id: str) -> dict[str, Any]:
+        task = task_manager.get_task(task_id)
+        if task is None:
+            raise HTTPException(status_code=404, detail=f"Tâche introuvable : {task_id}")
+        return {"task": task}
+
+    @app.post("/api/tasks/{task_id}/cancel")
+    def api_tasks_cancel(task_id: str) -> dict[str, Any]:
+        ok = task_manager.cancel_task(task_id)
+        if not ok:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Tâche introuvable ou déjà terminée, impossible d'annuler : {task_id}",
+            )
+        return {"task": task_manager.get_task(task_id)}
+
+    @app.get("/partials/tasks", response_class=HTMLResponse)
+    def partial_tasks(request: Request) -> HTMLResponse:
+        tasks = task_manager.list_tasks(limit=20)
+        return templates.TemplateResponse(
+            request,
+            "partials/tasks.html",
+            {"tasks": tasks, "task_types": available_types()},
         )
 
     @app.get("/", response_class=HTMLResponse)
