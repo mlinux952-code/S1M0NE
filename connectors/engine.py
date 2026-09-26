@@ -20,12 +20,13 @@ from connectors.github import GitHubConnector
 from connectors.gitlab import GitLabConnector
 from connectors.codeberg import CodebergConnector
 from connectors.pypi import PyPiConnector
+from connectors.sourceforge import SourceForgeConnector
 
 logger = get_logger("s1mone.connectors")
 
-# Registre statique des connecteurs disponibles (Phase 5, étape 5 : + PyPI en mode dégradé).
-# Le prochain (Bitbucket/Gitee/SourceForge) s'ajoutera ici, testé individuellement avant
-# d'être branché, comme convenu.
+# Registre statique des connecteurs disponibles (Phase 5, étape 6 : + SourceForge, DERNIER
+# connecteur de la Phase 5). Bitbucket et Gitee ont été retirés du plan D9 après vérification
+# en direct (voir DECISIONS.md) : aucune recherche par mot-clé fiable n'est possible pour eux.
 _CONNECTORS: dict[str, Connector] = {
     "npm": NpmConnector(),
     "huggingface": HuggingFaceConnector(),
@@ -33,6 +34,7 @@ _CONNECTORS: dict[str, Connector] = {
     "gitlab": GitLabConnector(),
     "codeberg": CodebergConnector(),
     "pypi": PyPiConnector(),
+    "sourceforge": SourceForgeConnector(),
 }
 
 

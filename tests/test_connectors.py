@@ -15,6 +15,7 @@ from connectors.gitlab import GitLabConnector
 from connectors.huggingface import HuggingFaceConnector
 from connectors.npm import NpmConnector
 from connectors.pypi import PyPiConnector
+from connectors.sourceforge import SourceForgeConnector
 
 
 @pytest.fixture(autouse=True)
@@ -509,6 +510,100 @@ def test_available_connectors_lists_pypi_with_degraded_mode_mentioned():
     entries = {c["name"]: c["description"] for c in available_connectors()}
     assert "pypi" in entries
     assert "DÉGRADÉ" in entries["pypi"]  # transparence exigée par D9 : message clair pour l'UI
+
+
+SOURCEFORGE_SAMPLE_RESPONSE = {
+    "shortname": "vlc",
+    "name": "VLC media player",
+    "summary": "The best free media player for video and DVDs",
+    "url": "https://sourceforge.net/p/vlc/",
+    "status": "active",
+}
+
+
+def _mock_sourceforge_client(payload, status_code: int = 200) -> httpx.AsyncClient:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(status_code, json=payload)
+
+    transport = httpx.MockTransport(handler)
+    return httpx.AsyncClient(transport=transport)
+
+
+def test_sourceforge_connector_returns_single_exact_match():
+    async def scenario():
+        client = _mock_sourceforge_client(SOURCEFORGE_SAMPLE_RESPONSE)
+        connector = SourceForgeConnector(client=client)
+        try:
+            return await connector.search("vlc")
+        finally:
+            await client.aclose()
+
+    results = asyncio.run(scenario())
+
+    assert len(results) == 1
+    assert results[0].source == "sourceforge"
+    assert results[0].name == "VLC media player"
+    assert results[0].extra["exact_match_only"] is True
+
+
+def test_sourceforge_connector_returns_empty_list_on_404_not_an_error():
+    """Un projet inexistant n'est pas une erreur : liste vide, jamais un résultat inventé."""
+
+    async def scenario():
+        client = _mock_sourceforge_client({}, status_code=404)
+        connector = SourceForgeConnector(client=client)
+        try:
+            return await connector.search("ce-projet-nexiste-vraiment-pas-xyz123")
+        finally:
+            await client.aclose()
+
+    results = asyncio.run(scenario())
+    assert results == []
+
+
+def test_sourceforge_connector_raises_on_real_http_error_not_404():
+    async def scenario():
+        client = _mock_sourceforge_client({}, status_code=503)
+        connector = SourceForgeConnector(client=client)
+        try:
+            await connector.search("vlc")
+        finally:
+            await client.aclose()
+
+    try:
+        asyncio.run(scenario())
+        raised = False
+    except httpx.HTTPStatusError:
+        raised = True
+    assert raised
+
+
+def test_sourceforge_connector_real_network_smoke_test_existing_project():
+    """Test réel (pas de mock) contre la vraie API SourceForge, avec un projet qui existe vraiment."""
+    connector = SourceForgeConnector()
+    results = asyncio.run(connector.search("vlc"))
+    assert len(results) == 1
+    assert "vlc" in results[0].name.lower()
+
+
+def test_sourceforge_connector_real_network_smoke_test_nonexistent_project():
+    """Vérifie en conditions réelles qu'un nom inexistant donne bien [] et pas une erreur."""
+    connector = SourceForgeConnector()
+    results = asyncio.run(
+        connector.search("ce-projet-nexiste-vraiment-pas-xyz123-s1mone-test")
+    )
+    assert results == []
+
+
+def test_available_connectors_lists_sourceforge_with_degraded_mode_mentioned():
+    entries = {c["name"]: c["description"] for c in available_connectors()}
+    assert "sourceforge" in entries
+    assert "DÉGRADÉ" in entries["sourceforge"]
+
+    # Vérification négative explicite : bitbucket/gitee ne doivent JAMAIS apparaître (retirés
+    # du plan D9 après vérification en direct, voir DECISIONS.md).
+    assert "bitbucket" not in entries
+    assert "gitee" not in entries
 
 
 class _FailingConnector(Connector):

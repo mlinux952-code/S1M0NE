@@ -98,6 +98,31 @@ Phase 1+).
   6. Bitbucket, Gitee, SourceForge : en dernier, APIs moins riches ou moins prioritaires pour un
      usage perso.
 
+- **Mise à jour (vérification en direct, session Phase 5 étape 6) : Bitbucket et Gitee sont
+  RETIRÉS DÉFINITIVEMENT du plan de connecteurs.** `[DECIDED]`
+  - **Bitbucket** : Atlassian a définitivement supprimé l'API de recherche globale de dépôts
+    (`GET /2.0/repositories?q=...`) le 14 avril 2026 (changelog officiel `CHANGE-2770`/`CHANGE-3081`,
+    confirmé par plusieurs sources indépendantes lors d'une vérification directe). Il ne reste que
+    `GET /2.0/repositories/{workspace}`, qui exige de déjà connaître le nom exact de l'espace de
+    travail — impossible de faire une recherche par mot-clé comme pour GitHub/GitLab/Codeberg.
+  - **Gitee** : l'endpoint documenté `GET /api/v5/search/repositories` répond `200 OK` mais
+    renvoie systématiquement `total_count: 0`, y compris pour des requêtes très populaires
+    (`redis`, `vue`...) dont on peut vérifier qu'il existe pourtant des centaines de résultats via
+    le moteur de recherche web de Gitee lui-même (`so.gitee.com`). L'API publique semble non
+    fonctionnelle pour un accès anonyme. Implémenter ce connecteur aurait fait croire à
+    l'utilisateur qu'"aucun résultat" existe alors que c'est faux — inacceptable au regard de la
+    règle anti-hallucination (§10/§25) : mieux vaut ne pas avoir le connecteur du tout que d'avoir
+    un connecteur qui ment silencieusement par omission.
+  - **SourceForge** : conservé, mais en **mode dégradé transparent** (même principe que PyPI) —
+    pas de recherche par mot-clé possible (pas d'endpoint dédié ; la recherche HTML classique
+    répond `403` aux requêtes automatisées), uniquement un lookup par nom exact de projet via
+    `GET /rest/p/<shortname>`. Chaque résultat porte `extra.exact_match_only=True` et la
+    description du connecteur affiche explicitement "MODE DÉGRADÉ".
+  - **Bilan final Phase 5** : 7 connecteurs actifs — npm, Hugging Face, GitHub, GitLab, Codeberg
+    (recherche floue complète) + PyPI, SourceForge (mode dégradé, nom exact uniquement). Bitbucket
+    et Gitee ne seront pas implémentés sauf si leurs APIs redeviennent fonctionnelles à l'avenir
+    (à revérifier si le besoin se représente).
+
 ## D10 — Sécurité / permissions
 
 - **Décision : dès la Phase 1, toute commande shell exécutée par S1M0NE passe par une liste
