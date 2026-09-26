@@ -45,16 +45,22 @@ task_app = typer.Typer(help="Gestion des tâches (Task Manager).")
 app.add_typer(task_app, name="task")
 
 
-@app.callback()
-def _ensure_ready() -> None:
-    """Exécuté avant chaque commande : garantit que la base SQLite existe déjà (idempotent)."""
-    from core.db import init_db
+_COMMANDS_NEEDING_DB = {"status", "task"}
 
-    init_db()
+
+@app.callback()
+def _ensure_ready(ctx: typer.Context) -> None:
+    """Exécuté avant chaque commande : garantit que la base SQLite existe déjà (idempotent),
+    mais seulement pour les commandes qui en ont réellement besoin (status, task ...). On évite
+    ainsi de créer la base et de polluer la sortie de logs pour un simple --help/version/system."""
+    if ctx.invoked_subcommand in _COMMANDS_NEEDING_DB:
+        from core.db import init_db
+
+        init_db()
 
 _LEVEL_COLORS = {"NORMAL": "green", "WARNING": "yellow", "CRITICAL": "bold red"}
 _STATUS_COLORS = {
-    "QUEUED": "white",
+    "QUEUED": "cyan",
     "RUNNING": "yellow",
     "SUCCESS": "green",
     "FAILED": "bold red",
@@ -86,7 +92,7 @@ def status() -> None:
     console.print(table)
 
     level = report["resource_level"]
-    color = _LEVEL_COLORS.get(level, "white")
+    color = _LEVEL_COLORS.get(level, "cyan")
     console.print(f"\nNiveau de ressources : [{color}]{level}[/{color}]")
 
     overall = "[green]S1M0NE est opérationnelle.[/green]" if report["overall_ok"] else (
@@ -104,7 +110,7 @@ def system() -> None:
     snap = get_snapshot()
     info = get_platform_info()
     level = resource_level(snap)
-    color = _LEVEL_COLORS.get(level, "white")
+    color = _LEVEL_COLORS.get(level, "cyan")
 
     table = Table(title=f"S1M0NE — system  (niveau : [{color}]{level}[/{color}])")
     table.add_column("Métrique")
