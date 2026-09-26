@@ -154,3 +154,70 @@ def count_tasks_by_status() -> dict[str, int]:
     with get_connection() as conn:
         rows = conn.execute("SELECT status, COUNT(*) as n FROM tasks GROUP BY status").fetchall()
         return {row["status"]: row["n"] for row in rows}
+
+
+# --- Cycle de vie complet des tâches (Phase 3 — Task Manager) ---
+
+
+def get_task(task_id: str) -> dict[str, Any] | None:
+    with get_connection() as conn:
+        row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+        return dict(row) if row else None
+
+
+def list_tasks(status: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
+    with get_connection() as conn:
+        if status:
+            rows = conn.execute(
+                "SELECT * FROM tasks WHERE status = ? ORDER BY created_at DESC LIMIT ?",
+                (status, limit),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM tasks ORDER BY created_at DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def fetch_queued_tasks(limit: int) -> list[dict[str, Any]]:
+    """Récupère jusqu'à `limit` tâches QUEUED, les plus anciennes d'abord (FIFO)."""
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM tasks WHERE status = 'QUEUED' ORDER BY created_at ASC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def mark_task_running(task_id: str) -> None:
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE tasks SET status='RUNNING', started_at=? WHERE id=? AND status='QUEUED'",
+            (time.time(), task_id),
+        )
+
+
+def mark_task_success(task_id: str, result: dict[str, Any]) -> None:
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE tasks SET status='SUCCESS', result=?, finished_at=? WHERE id=?",
+            (json.dumps(result), time.time(), task_id),
+        )
+
+
+def mark_task_failed(task_id: str, error: str) -> None:
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE tasks SET status='FAILED', error=?, finished_at=? WHERE id=?",
+            (error, time.time(), task_id),
+        )
+
+
+def mark_task_cancelled(task_id: str) -> None:
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE tasks SET status='CANCELLED', finished_at=? WHERE id=? "
+            "AND status IN ('QUEUED','RUNNING')",
+            (time.time(), task_id),
+        )
+

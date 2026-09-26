@@ -17,11 +17,16 @@ logs_dir = "logs"
 cache_dir = "data/cache"
 
 [resource_limits]
-# Seuils utilisés plus tard par le Resource Manager (Phase 3+)
+# Seuils utilisés par le Resource Manager
 ram_warning_percent = 80
 ram_critical_percent = 92
 swap_warning_percent = 50
 cpu_warning_percent = 90
+
+# Parallélisme du Task Manager selon le niveau de ressources détecté (mega-prompt §18)
+max_parallel_tasks_normal = 2
+max_parallel_tasks_warning = 1
+max_parallel_tasks_critical = 0
 
 [logging]
 level = "INFO"
