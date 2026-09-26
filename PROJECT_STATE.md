@@ -7,7 +7,9 @@
 
 - **PHASE 0 — DÉCOUVERTE : terminée et validée.**
 - **PHASE 1 — FONDATION : terminée, testée ET VALIDÉE SUR LA VRAIE MACHINE (omrane-Inspiron-3520, Linux Mint 22.3, install.sh + 15/15 tests exécutés avec succès en conditions réelles).**
-- **PHASE 2 — INTERFACE WEB : terminée et testée en sandbox (23/23 tests, dashboard live vérifié). EN ATTENTE de validation sur la machine réelle (prochain paquet à transmettre).**
+- **PHASE 2 — INTERFACE WEB : terminée, testée ET VALIDÉE SUR LA VRAIE MACHINE** (dashboard live
+  vérifié dans le navigateur sur omrane-Inspiron-3520 : RAM/CPU/disque réels affichés,
+  auto-diagnostic OK, page Terminal Web fonctionnelle, 23/23 tests passés lors de l'installation).
 - Prochaine phase à valider avec l'utilisateur avant démarrage : **PHASE 3 — TASK MANAGER**.
 
 ## Fonctionnalités terminées — Phase 2 (nouveau)
