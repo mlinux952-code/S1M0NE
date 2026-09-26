@@ -1,0 +1,38 @@
+# S1M0NE — configuration centrale
+# Ce fichier contient des réglages NON sensibles.
+# Les secrets (clés API, tokens) vont exclusivement dans .env (jamais ici, jamais dans Git).
+
+[server]
+host = "0.0.0.0"
+port = 8420
+
+[database]
+# Chemin relatif à DATA_DIR
+filename = "s1mone.db"
+
+[storage]
+# DATA_DIR peut être surchargé par la variable d'environnement S1MONE_DATA_DIR
+data_dir = "data"
+logs_dir = "logs"
+cache_dir = "data/cache"
+
+[resource_limits]
+# Seuils utilisés plus tard par le Resource Manager (Phase 3+)
+ram_warning_percent = 80
+ram_critical_percent = 92
+swap_warning_percent = 50
+cpu_warning_percent = 90
+
+[logging]
+level = "INFO"
+max_bytes = 1048576
+backup_count = 3
+
+[search]
+enabled_connectors = []
+
+[ai]
+default_provider = ""
+
+[security]
+require_confirmation_for_dangerous_commands = true
