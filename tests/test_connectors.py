@@ -5,10 +5,23 @@ from __future__ import annotations
 import asyncio
 
 import httpx
+import pytest
 
 from connectors.base import Connector, SearchResult
 from connectors.engine import available_connectors, search_all
 from connectors.npm import NpmConnector
+
+
+@pytest.fixture(autouse=True)
+def isolated_db(tmp_path, monkeypatch):
+    """Isole la base SQLite (donc le cache, Phase 4) pour ne pas polluer les données réelles
+    du projet ni faire dépendre un test du résultat d'un précédent (cache partagé)."""
+    monkeypatch.setenv("S1MONE_DATA_DIR", str(tmp_path))
+    from core.config import settings
+    from core.db import init_db
+
+    init_db(settings.db_path)
+    yield
 
 NPM_SAMPLE_RESPONSE = {
     "objects": [
@@ -107,7 +120,31 @@ def test_search_all_isolates_a_failing_connector(monkeypatch):
 
 def test_search_all_empty_query_returns_nothing_without_calling_connectors():
     outcome = asyncio.run(search_all("   "))
-    assert outcome == {"results": [], "errors": {}}
+    assert outcome == {"results": [], "errors": {}, "cache_hits": []}
+
+
+def test_search_all_second_identical_call_hits_cache(monkeypatch):
+    import connectors.engine as engine_module
+
+    call_count = {"n": 0}
+
+    class _CountingConnector(Connector):
+        name = "counted"
+        description = "compte le nombre de fois où search() est vraiment appelé"
+
+        async def search(self, query: str, limit: int = 10) -> list[SearchResult]:
+            call_count["n"] += 1
+            return [SearchResult(source=self.name, name="résultat unique")]
+
+    monkeypatch.setattr(engine_module, "_CONNECTORS", {"counted": _CountingConnector()})
+
+    first = asyncio.run(engine_module.search_all("même-requete"))
+    second = asyncio.run(engine_module.search_all("même-requete"))
+
+    assert call_count["n"] == 1  # le 2e appel est servi par le cache, pas par le connecteur
+    assert first["cache_hits"] == []
+    assert second["cache_hits"] == ["counted"]
+    assert first["results"] == second["results"]
 
 
 def test_available_connectors_lists_npm():

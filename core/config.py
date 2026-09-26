@@ -123,6 +123,10 @@ class Settings:
     def resource_limits(self) -> dict[str, Any]:
         return self.raw_toml.get("resource_limits", {})
 
+    @property
+    def cache_default_ttl_seconds(self) -> int:
+        return int(self.raw_toml.get("cache", {}).get("default_ttl_seconds", 300))
+
     def get_secret(self, name: str, default: str | None = None) -> str | None:
         """Lit un secret : priorité à l'environnement système, puis .env, jamais config.toml."""
         return os.environ.get(name) or self.env_values.get(name) or default

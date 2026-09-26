@@ -11,8 +11,9 @@ import asyncio
 from dataclasses import dataclass, field
 from typing import Any
 
+from core.cache import cache_get, cache_set, make_key
 from core.logging_setup import get_logger
-from connectors.base import Connector, SearchResult
+from connectors.base import Connector
 from connectors.npm import NpmConnector
 
 logger = get_logger("s1mone.connectors")
@@ -35,14 +36,25 @@ class SourceOutcome:
     """Résultat de l'exécution d'un connecteur : soit des résultats, soit une erreur explicite."""
 
     source: str
-    results: list[SearchResult] = field(default_factory=list)
+    results: list[dict[str, Any]] = field(default_factory=list)
     error: str | None = None
+    from_cache: bool = False
 
 
 async def _run_one(source_name: str, connector: Connector, query: str, limit: int) -> SourceOutcome:
+    # Cache Manager (Phase 4) : évite de re-solliciter une source pour une requête identique
+    # dans la fenêtre de TTL — essentiel pour les connecteurs à quota strict (GitHub : 30
+    # req/min), et une simple politesse pour les autres.
+    cache_key = make_key("search", source_name, query.lower(), str(limit))
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return SourceOutcome(source=source_name, results=cached, from_cache=True)
+
     try:
         results = await connector.search(query, limit=limit)
-        return SourceOutcome(source=source_name, results=results)
+        result_dicts = [r.as_dict() for r in results]
+        cache_set(cache_key, result_dicts, source=source_name)
+        return SourceOutcome(source=source_name, results=result_dicts)
     except Exception as exc:  # noqa: BLE001 - isoler la panne d'un connecteur, jamais tout casser
         logger.error(f"Connecteur '{source_name}' en échec pour la requête {query!r} : {exc}")
         return SourceOutcome(source=source_name, error=str(exc))
@@ -58,7 +70,7 @@ async def search_all(
     """
     query = query.strip()
     if not query:
-        return {"results": [], "errors": {}}
+        return {"results": [], "errors": {}, "cache_hits": []}
 
     chosen = {
         name: conn
@@ -72,9 +84,12 @@ async def search_all(
 
     results: list[dict[str, Any]] = []
     errors: dict[str, str] = {}
+    cache_hits: list[str] = []
     for outcome in outcomes:
         if outcome.error is not None:
             errors[outcome.source] = outcome.error
-        results.extend(r.as_dict() for r in outcome.results)
+        if outcome.from_cache:
+            cache_hits.append(outcome.source)
+        results.extend(outcome.results)
 
-    return {"results": results, "errors": errors}
+    return {"results": results, "errors": errors, "cache_hits": cache_hits}

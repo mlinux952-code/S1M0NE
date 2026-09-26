@@ -36,6 +36,10 @@ backup_count = 3
 [search]
 enabled_connectors = []
 
+[cache]
+# Durée de vie par défaut (secondes) d'une entrée de cache créée sans TTL explicite.
+default_ttl_seconds = 300
+
 [ai]
 default_provider = ""
 
