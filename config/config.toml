@@ -57,3 +57,21 @@ default_provider = "groq"
 
 [security]
 require_confirmation_for_dangerous_commands = true
+
+# Phase 9 — permissions pour les commandes système réelles (s1mone exec / terminal web).
+# Niveaux possibles (croissants) : READ, WRITE, EXECUTE, ADMIN. Voir core/permissions.py pour
+# le détail du catalogue de commandes et le niveau requis par chacune.
+#
+# Terminal local (CLI) : ADMIN par défaut. C'est toi qui lances "s1mone" sur ta propre session,
+# la confiance est la même qu'un terminal shell classique.
+cli_permission_level = "ADMIN"
+#
+# Terminal web : READ par défaut, volontairement plus prudent. L'interface web écoute sur
+# 0.0.0.0 sans authentification (mega-prompt : low-resource first, pas de système de comptes) —
+# n'importe quel appareil de ton réseau local peut l'atteindre. Élève ce niveau seulement si tu
+# fais confiance à ton réseau (ex. "WRITE" pour autoriser mkdir/touch/cp depuis le navigateur).
+web_permission_level = "READ"
+#
+# Toutes les commandes qui manipulent des chemins (ls, cat, mkdir, touch, cp, mv, rm) restent
+# bornées à ce dossier, même au niveau ADMIN — jamais le disque entier. Par défaut : DATA_DIR.
+# fs_root = "data"

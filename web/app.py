@@ -28,8 +28,11 @@ from ai.gateway import available_providers
 from ai.gateway import converse as ai_converse
 from ai.gateway import get_conversation_history, reset_conversation
 from connectors.engine import available_connectors, search_all
+from core import permissions
+from core.config import settings
 from core.db import init_db
 from core.logging_setup import get_logger
+from core.shell_runner import run_command as run_shell_command
 from core.timeutil import format_timestamp
 from system.healthcheck import run_all_checks
 from system.monitor import get_platform_info, get_snapshot, resource_level
@@ -75,6 +78,17 @@ class TaskSubmitRequest(BaseModel):
 
     type: str
     parameters: dict[str, Any] = Field(default_factory=dict)
+
+
+class ExecRequest(BaseModel):
+    """Corps de requête pour POST /api/exec (Phase 9 - Sécurité).
+
+    `confirm` doit être renvoyé à `true` pour une deuxième soumission après un premier refus
+    409 (commande destructrice) : jamais d'exécution destructrice sans confirmation explicite
+    du client, même côté web."""
+
+    command: str
+    confirm: bool = False
 
 
 class ChatRequest(BaseModel):
@@ -133,6 +147,52 @@ def create_app() -> FastAPI:
     @app.get("/api/cli/{command}")
     def api_cli(command: str) -> dict[str, Any]:
         return {"command": command, "output": _run_command(command)}
+
+    @app.get("/api/exec/catalog")
+    def api_exec_catalog() -> dict[str, Any]:
+        """Liste blanche complète (Phase 9), annotée de ce que ce terminal web a le droit
+        d'exécuter avec son niveau de permission actuel (config.toml [security].web_permission_level)."""
+        level = permissions.web_level()
+        return {
+            "level": level.name,
+            "commands": [
+                {
+                    "name": spec.name,
+                    "permission": spec.permission.name,
+                    "destructive": spec.destructive,
+                    "takes_path": spec.takes_path,
+                    "description": spec.description,
+                    "allowed": spec.permission <= level,
+                }
+                for spec in permissions.available_commands()
+            ],
+        }
+
+    @app.post("/api/exec")
+    def api_exec(payload: ExecRequest) -> dict[str, Any]:
+        """Exécute une commande système réelle en liste blanche (Phase 9), bornée au niveau de
+        permission web (plus prudent par défaut que le terminal local, voir config.toml)."""
+        if not payload.command.strip():
+            raise HTTPException(status_code=400, detail="Commande vide.")
+        try:
+            result = run_shell_command(
+                payload.command,
+                level=permissions.web_level(),
+                fs_root=settings.fs_root,
+                confirmed=payload.confirm,
+            )
+        except permissions.UnknownCommandError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except permissions.PermissionError_ as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except permissions.ConfirmationRequiredError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail=f"{exc} Renvoyer la même requête avec confirm=true pour l'exécuter.",
+            ) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return result
 
     @app.get("/partials/system", response_class=HTMLResponse)
     def partial_system(request: Request) -> HTMLResponse:
@@ -268,8 +328,25 @@ def create_app() -> FastAPI:
 
     @app.get("/terminal", response_class=HTMLResponse)
     def terminal_page(request: Request) -> HTMLResponse:
+        level = permissions.web_level()
+        exec_catalog = [
+            {
+                "name": spec.name,
+                "permission": spec.permission.name,
+                "destructive": spec.destructive,
+                "description": spec.description,
+                "allowed": spec.permission <= level,
+            }
+            for spec in permissions.available_commands()
+        ]
         return templates.TemplateResponse(
-            request, "terminal.html", {"allowed_commands": sorted(ALLOWED_WEB_COMMANDS)}
+            request,
+            "terminal.html",
+            {
+                "allowed_commands": sorted(ALLOWED_WEB_COMMANDS),
+                "exec_level": level.name,
+                "exec_catalog": exec_catalog,
+            },
         )
 
     logger.info("Application FastAPI S1M0NE initialisée (Phase 2).")

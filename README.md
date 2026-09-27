@@ -23,10 +23,17 @@ extensible vers l'IA — conçue en priorité pour tourner confortablement sur u
 - **Phase 6 — AI Gateway (assistant IA conversationnel, gratuit et sans carte bancaire) : terminée,
   testée et validée sur la machine réelle.** `s1mone chat` (CLI) et page `/chat` (web), 3
   fournisseurs interchangeables : Groq (recommandé), OpenRouter, Ollama (local, expérimental).
-- **Phase 7 — Mémoire : terminée et testée en sandbox, en attente de validation sur la machine
-  réelle.** La conversation IA persiste maintenant d'une session à l'autre (`s1mone chat`
-  continue là où tu l'as laissé, même après avoir fermé le terminal), et l'assistant sait ce
-  qu'est S1M0NE.
+- **Phase 7 — Mémoire : terminée, testée et validée sur la machine réelle.** La conversation IA
+  persiste maintenant d'une session à l'autre (`s1mone chat` continue là où tu l'as laissé, même
+  après avoir fermé le terminal), et l'assistant sait ce qu'est S1M0NE. Complétée par
+  `s1mone memory list/show/forget` (transparence totale sur ce qui est mémorisé) et un tableau
+  `s1mone search` plus lisible (une ligne par résultat).
+- **Phase 9 — Sécurité (permissions + commandes système réelles) : terminée et testée en
+  sandbox, en attente de validation sur la machine réelle.** `s1mone exec` (CLI) et le terminal
+  web (`/terminal`) peuvent désormais exécuter de vraies commandes système, mais uniquement une
+  liste blanche stricte, classée par niveau de permission (READ/WRITE/EXECUTE/ADMIN), bornée au
+  dossier de données de S1M0NE, avec confirmation explicite obligatoire pour toute commande
+  destructrice (rm, rmdir).
 
 Le détail complet, phase par phase, est dans [`PROJECT_STATE.md`](./PROJECT_STATE.md).
 
@@ -116,6 +123,32 @@ s1mone memory list --level persistent           # filtré par niveau
 s1mone memory show persistent chat_history      # contenu complet d'une entrée
 s1mone memory forget persistent chat_history    # supprime une entrée (demande confirmation)
 s1mone memory forget persistent chat_history -y # supprime sans demander de confirmation
+```
+
+## Sécurité — permissions et commandes système (Phase 9)
+
+S1M0NE peut exécuter de vraies commandes système (`pwd`, `ls`, `mkdir`, `cp`, `rm`, ...), mais
+jamais une commande arbitraire : uniquement une **liste blanche** définie dans
+`core/permissions.py`, classée en 4 niveaux de confiance croissants **READ < WRITE < EXECUTE <
+ADMIN**. Toute commande qui touche à un fichier reste bornée au dossier de données de S1M0NE
+(`fs_root`, `DATA_DIR` par défaut), jamais au disque entier — même au niveau ADMIN. Les
+commandes destructrices (`rm`, `rmdir`) exigent toujours une confirmation explicite avant
+exécution.
+
+- **Terminal local (`s1mone exec`)** : niveau `ADMIN` par défaut (c'est toi qui lances la CLI sur
+  ta propre session, même confiance qu'un shell classique).
+- **Terminal web (`/terminal`)** : niveau `READ` par défaut, plus prudent — l'interface web
+  écoute sur `0.0.0.0` sans authentification, n'importe quel appareil de ton réseau local peut
+  l'atteindre. Élève ce niveau dans `config.toml [security]` seulement si tu fais confiance à ton
+  réseau.
+- Explicitement **hors périmètre, quel que soit le niveau** : `shutdown`, `reboot`, `dd`, `mkfs`,
+  `chmod`/`chown` massifs, `sudo` — ces commandes ne sont jamais ajoutées au catalogue.
+
+```bash
+s1mone exec list                    # catalogue complet + niveau du terminal local
+s1mone exec run "pwd"
+s1mone exec run "mkdir sous_dossier"
+s1mone exec run "rm fichier.txt"    # demande confirmation, sauf --yes/-y
 ```
 
 ## Recherche multi-sources (Phase 5)

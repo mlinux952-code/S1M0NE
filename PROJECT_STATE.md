@@ -33,21 +33,27 @@
   maison, plus légers). Bug réel détecté et corrigé après retour utilisateur : le modèle Groq par
   défaut (`llama-3.3-70b-versatile`) était passé en accès Enterprise chez Groq entre-temps →
   remplacé par `openai/gpt-oss-20b`.
-- **PHASE 7 — MÉMOIRE : terminée et testée dans le sandbox (avec le vrai binaire installé, via
-  processus séparés + faux serveur Ollama pour prouver la persistance réelle inter-processus).
-  Pas encore validée par l'utilisateur sur sa machine réelle.** Memory Manager (`core/memory.py`)
-  au-dessus de la table SQLite `memory` (Phase 1). Premier usage concret : la conversation IA
-  (Phase 6) persiste maintenant entre deux lancements de `s1mone chat` ou deux visites de
-  `/chat`, au lieu de repartir de zéro — plus un message système d'auto-présentation de S1M0NE
-  (corrige le cas réel observé : l'assistant ne savait pas ce qu'était S1M0NE). `--reset` / `/reset`
-  / bouton "Nouvelle conversation" pour repartir à zéro. Voir DECISIONS.md §D12.
-- **Polish post-Phase 7 (terminée en sandbox, en attente de validation machine réelle) :**
+- **PHASE 7 — MÉMOIRE : terminée, testée et validée sur la machine réelle** (confirmé : le
+  symlink `~/.local/bin/s1mone` fonctionne dans un nouveau terminal, `s1mone chat` se souvient du
+  prénom de l'utilisateur et de l'auto-description de S1M0NE à travers plusieurs invocations).
+  Memory Manager (`core/memory.py`) au-dessus de la table SQLite `memory` (Phase 1). Premier
+  usage concret : la conversation IA (Phase 6) persiste maintenant entre deux lancements de
+  `s1mone chat` ou deux visites de `/chat`, au lieu de repartir de zéro — plus un message système
+  d'auto-présentation de S1M0NE. `--reset` / `/reset` / bouton "Nouvelle conversation" pour
+  repartir à zéro. Voir DECISIONS.md §D12.
+- **Polish post-Phase 7 (terminé, testé et validé sur la machine réelle) :**
   - `s1mone memory list/show/forget` : transparence sur ce qui est mémorisé (métadonnées,
     contenu complet, suppression avec confirmation) — demandé par cohérence avec la Phase 7.
   - Tableau `s1mone search` réécrit en une seule ligne par résultat (`overflow="ellipsis"` +
     nettoyage des descriptions contenant des retours à la ligne bruts) : corrige le rough edge
     "tableau trop large / difficile à lire" identifié précédemment.
-- **152/152 tests automatisés passent** dans le sandbox.
+- **PHASE 9 — SÉCURITÉ : terminée et testée en sandbox, en attente de validation sur la machine
+  réelle.** Voir la section dédiée plus bas pour le détail complet. En résumé : `s1mone exec` +
+  `/terminal` (web) peuvent exécuter de vraies commandes système, en liste blanche stricte,
+  classées par permission READ/WRITE/EXECUTE/ADMIN, bornées au dossier de données, avec
+  confirmation obligatoire pour les commandes destructrices (rm, rmdir). Voir DECISIONS.md §D10
+  (mis à jour : DECIDED).
+- **186/186 tests automatisés passent** dans le sandbox (152 avant Phase 9 + 34 nouveaux).
 
 ## Workflow de livraison (actuel, définitif)
 
@@ -112,16 +118,55 @@ Tous les connecteurs passent par le Cache Manager (Phase 4, TTL configurable dan
 | Sécurité | liste blanche stricte de commandes en lecture seule pour le terminal web ; rien
   d'arbitraire n'est jamais exécuté depuis le navigateur |
 
+## PHASE 9 — SÉCURITÉ (permissions + commandes système réelles)
+
+**Terminée et testée en sandbox (186/186 tests), en attente de validation sur la machine réelle
+de l'utilisateur.**
+
+Reprend la décision D10 de `DECISIONS.md`, posée dès la Phase 1 mais implémentée seulement
+maintenant : S1M0NE peut désormais exécuter de vraies commandes système (jusque-là, seuls des
+handlers Python fixes existaient : `sleep`, `system_snapshot`), mais uniquement via :
+
+- `core/permissions.py` : liste blanche de commandes (`CATALOG`), classées en 4 niveaux
+  **READ < WRITE < EXECUTE < ADMIN**. Catalogue volontairement modeste : `pwd`, `whoami`, `date`,
+  `uptime`, `df`, `free`, `ps` (READ) ; `ls`, `cat` (READ, avec chemin) ; `mkdir`, `touch`, `cp`
+  (WRITE) ; `mv` (EXECUTE) ; `rm`, `rmdir` (ADMIN, destructifs). **Décision explicite** :
+  `shutdown`/`reboot`/`dd`/`mkfs`/`chmod`/`chown` massifs/`sudo` ne sont PAS implémentés, quel
+  que soit le niveau — hors périmètre du produit, danger réel pour la seule machine de
+  l'utilisateur sans bénéfice clair.
+- `core/shell_runner.py` : exécution réelle (`subprocess.run`, jamais `shell=True`), avec
+  validation de chemin systématique (`_resolve_and_check_path`) bornant tout argument-chemin à
+  `Settings.fs_root` (DATA_DIR par défaut) — rejette absolu comme relatif (`../..`) qui sortirait
+  du périmètre, même au niveau ADMIN. Timeout de sécurité (10s par défaut). Toute commande
+  `destructive=True` lève `ConfirmationRequiredError` tant que `confirmed=True` n'est pas fourni
+  explicitement par l'appelant.
+- CLI : `s1mone exec list` (catalogue + niveau courant), `s1mone exec run "<commande>"`
+  (`--yes/-y` pour confirmer d'avance). Niveau par défaut : **ADMIN** (terminal local = même
+  confiance qu'un shell classique lancé par le propriétaire de la machine).
+- Web : `GET /api/exec/catalog`, `POST /api/exec` (`{command, confirm}` — 409 si confirmation
+  requise et non fournie, 403 si permission insuffisante, 400 si commande inconnue ou chemin
+  hors périmètre). Niveau par défaut : **READ** (plus prudent — l'interface web écoute sur
+  `0.0.0.0` sans authentification). Page `/terminal` enrichie d'un vrai formulaire de commande
+  avec gestion du flux de confirmation en deux temps (Alpine.js, sans dépendance JS
+  supplémentaire).
+- `config.toml [security]` : `cli_permission_level` (défaut ADMIN), `web_permission_level`
+  (défaut READ), `fs_root` (défaut DATA_DIR) — tous surchargeables (env `S1MONE_*` ou
+  config.toml).
+- 34 nouveaux tests (`test_permissions.py`, `test_shell_runner.py`, `test_cli_exec.py`,
+  `test_web_exec.py`) : ordre des permissions, refus commande inconnue/permission
+  insuffisante/chemin hors périmètre, flux de confirmation CLI (interactif + `--yes`) et web
+  (409 puis `confirm=true`).
+- **186/186 tests automatisés passent** dans le sandbox (152 + 34).
+
 ## Prochaine étape
 
-Phase 7 (Mémoire) codée et testée en sandbox, en attente de validation sur la machine réelle de
-l'utilisateur (`git pull && ./install.sh`, puis vérifier que `s1mone chat` se souvient bien d'un
-message à l'autre, y compris après avoir fermé et rouvert le terminal).
+Validation de la Phase 9 sur la machine réelle de l'utilisateur (`git pull && ./install.sh`,
+puis `s1mone exec list`, `s1mone exec run "ls ."`, tester une commande destructrice pour
+vérifier la confirmation, et la page `/terminal` en web).
 
-Candidats du plan initial restants après validation de la Phase 7 :
-- Améliorations transverses possibles : affichage terminal de `s1mone search` (tableau large),
-  pagination, tri par pertinence/stars ; page dédiée d'exploration de la mémoire (actuellement
-  seulement consommée en interne par le chat, pas de vue "s1mone memory list").
-- Étapes plus lointaines du méga-prompt non encore abordées : vrais plugins tiers (Pluggy,
-  Phase 8), sécurité avancée (permissions READ/WRITE/EXECUTE/ADMIN + confirmation obligatoire
-  pour commandes destructrices, Phase 9).
+Candidats du plan initial restants après validation de la Phase 9 :
+- Phase 8 : vrais plugins tiers (Pluggy), extensibilité sans toucher au code central — permettrait
+  d'étendre le catalogue de commandes système ou d'ajouter de nouveaux connecteurs de recherche
+  sans modifier `core/`.
+- Améliorations transverses possibles : page web dédiée à la mémoire (actuellement CLI
+  uniquement) ; pagination/tri des résultats de recherche.

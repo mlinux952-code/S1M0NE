@@ -152,6 +152,52 @@ class Settings:
                 return str(model)
         return None
 
+    @property
+    def cli_permission_level(self) -> str:
+        """Niveau de permission du terminal local (CLI) pour les commandes système réelles
+        (Phase 9 - Sécurité). Par défaut ADMIN : le terminal local est lancé par le propriétaire
+        de la machine, sur sa propre session — c'est la même confiance qu'un shell classique."""
+        override = self.env_values.get("S1MONE_CLI_PERMISSION_LEVEL") or os.environ.get(
+            "S1MONE_CLI_PERMISSION_LEVEL"
+        )
+        if override:
+            return override
+        return str(self.raw_toml.get("security", {}).get("cli_permission_level", "ADMIN"))
+
+    @property
+    def web_permission_level(self) -> str:
+        """Niveau de permission du terminal web pour les commandes système réelles (Phase 9).
+        Par défaut READ SEULEMENT : contrairement au terminal local, l'interface web peut être
+        atteinte depuis n'importe quelle machine du réseau local (host='0.0.0.0') sans
+        authentification — on part du principe le plus prudent, l'utilisateur peut l'élever
+        explicitement dans config.toml s'il fait confiance à son réseau."""
+        override = self.env_values.get("S1MONE_WEB_PERMISSION_LEVEL") or os.environ.get(
+            "S1MONE_WEB_PERMISSION_LEVEL"
+        )
+        if override:
+            return override
+        return str(self.raw_toml.get("security", {}).get("web_permission_level", "READ"))
+
+    @property
+    def fs_root(self) -> Path:
+        """Racine du système de fichiers à laquelle sont bornées TOUTES les commandes système
+        qui manipulent des chemins (ls, cat, mkdir, touch, cp, mv, rm — Phase 9). Par défaut
+        DATA_DIR : le bac à sable propre de S1M0NE, jamais le disque entier. Configurable
+        (`[security] fs_root` dans config.toml) si l'utilisateur veut élargir le périmètre en
+        connaissance de cause."""
+        override = self.raw_toml.get("security", {}).get("fs_root")
+        if override:
+            return Path(override).expanduser().resolve()
+        return self.data_dir
+
+    @property
+    def require_confirmation_for_dangerous_commands(self) -> bool:
+        return bool(
+            self.raw_toml.get("security", {}).get(
+                "require_confirmation_for_dangerous_commands", True
+            )
+        )
+
     def get_secret(self, name: str, default: str | None = None) -> str | None:
         """Lit un secret : priorité à l'environnement système, puis .env, jamais config.toml."""
         return os.environ.get(name) or self.env_values.get(name) or default

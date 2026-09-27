@@ -142,12 +142,25 @@ Phase 1+).
 
 ## D10 — Sécurité / permissions
 
-- **Décision : dès la Phase 1, toute commande shell exécutée par S1M0NE passe par une liste
-  blanche + une classification READ/WRITE/EXECUTE/ADMIN, avec confirmation explicite obligatoire
-  pour toute commande destructrice (rm, dd, mkfs, shutdown, reboot, chmod/chown massifs, réseau
-  sensible).** `[PROPOSED — à implémenter dès le noyau, pas en Phase 9 seulement]`
-- Justification : le prompt insiste sur "ne jamais exécuter aveuglément" — plus simple et plus
-  sûr de construire cette barrière dès le début que de la retrofiter plus tard.
+- **Décision : toute commande shell exécutée par S1M0NE passe par une liste blanche +
+  une classification READ/WRITE/EXECUTE/ADMIN, avec confirmation explicite obligatoire pour
+  toute commande destructrice.** `[DECIDED — implémenté en Phase 9]`
+- Justification : le prompt insiste sur "ne jamais exécuter aveuglément" — principe posé dès la
+  Phase 1 (liste blanche du terminal web, lecture seule) et complété en Phase 9 avec une vraie
+  classification par permission et une capacité d'exécution réelle (au-delà du lecture-seule).
+- **Périmètre final, plus restreint que l'intention initiale** : `core/permissions.py` définit
+  un catalogue volontairement modeste (`pwd`, `whoami`, `date`, `uptime`, `df`, `free`, `ps`,
+  `ls`, `cat`, `mkdir`, `touch`, `cp`, `mv`, `rm`, `rmdir`). **`dd`, `mkfs`, `shutdown`,
+  `reboot`, `chmod`/`chown` massifs et tout accès réseau sensible ne sont PAS implémentés, quel
+  que soit le niveau de permission** — écartés délibérément : danger réel pour la seule machine
+  de l'utilisateur, sans bénéfice clair pour un assistant personnel. Toute commande qui touche à
+  un fichier est en plus bornée à `fs_root` (DATA_DIR par défaut, configurable), même au niveau
+  ADMIN — jamais le disque entier.
+- Deux profils de confiance distincts : terminal local (`s1mone exec`, niveau ADMIN par défaut —
+  même confiance qu'un shell classique lancé par le propriétaire) et terminal web (`/api/exec`,
+  niveau READ par défaut — plus prudent car l'interface web écoute sur `0.0.0.0` sans
+  authentification). Les commandes destructrices exigent toujours une confirmation explicite,
+  y compris côté web via un flux en deux temps (409 puis renvoi avec `confirm=true`).
 
 ## D11 — Emplacement des données
 

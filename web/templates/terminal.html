@@ -2,27 +2,101 @@
 {% block title %}Terminal{% endblock %}
 {% block content %}
 <h1>Terminal Web</h1>
-<p class="hint">
-    Par sécurité (mega-prompt §15/§31), ce terminal web n'exécute <strong>aucune commande shell
-    arbitraire</strong>. Seules ces commandes en lecture seule sont autorisées pour l'instant :
-    {% for c in allowed_commands %}<code>{{ c }}</code>{% if not loop.last %}, {% endif %}{% endfor %}.
-    Un vrai terminal (avec permissions/confirmation) arrive en Phase 9 (Sécurité).
-</p>
 
-<div x-data="{ output: null, command: '{{ allowed_commands[0] }}' }">
-    <select x-model="command">
-        {% for c in allowed_commands %}
-        <option value="{{ c }}">{{ c }}</option>
+<div class="card">
+    <h2 style="margin-top:0;">Introspection rapide (lecture seule)</h2>
+    <p class="hint">
+        Ces commandes appellent directement le code Python interne de S1M0NE (aucun shell) :
+        {% for c in allowed_commands %}<code>{{ c }}</code>{% if not loop.last %}, {% endif %}{% endfor %}.
+        Pour de vraies commandes système avec permissions, voir la section ci-dessous
+        (Phase 9 — Sécurité).
+    </p>
+    <div x-data="{ output: null, command: '{{ allowed_commands[0] }}' }">
+        <select x-model="command">
+            {% for c in allowed_commands %}
+            <option value="{{ c }}">{{ c }}</option>
+            {% endfor %}
+        </select>
+        <button
+            @click="
+                fetch('/api/cli/' + command)
+                    .then(r => r.json())
+                    .then(data => output = JSON.stringify(data, null, 2))
+            "
+        >Exécuter</button>
+
+        <pre x-show="output" x-text="output" class="terminal-output"></pre>
+    </div>
+</div>
+
+<div class="card">
+    <h2 style="margin-top:0;">Commandes système réelles (Phase 9 — Sécurité)</h2>
+    <p class="hint">
+        Ce terminal exécute de vraies commandes système, mais uniquement celles d'une liste
+        blanche stricte, jamais une commande arbitraire. Niveau de permission de ce terminal
+        web : <strong>{{ exec_level }}</strong> (plus prudent par défaut que le terminal local
+        — configurable dans <code>config.toml [security]</code>). Toute commande qui touche à un
+        fichier est bornée au dossier de données de S1M0NE, jamais au disque entier. Les
+        commandes marquées <span class="badge badge-crit">destructrice</span> exigent une
+        confirmation explicite avant exécution.
+    </p>
+    <table>
+        <tr><th>Commande</th><th>Permission</th><th>Description</th></tr>
+        {% for spec in exec_catalog %}
+        <tr style="{% if not spec.allowed %}opacity:0.5;{% endif %}">
+            <td><code>{{ spec.name }}</code>{% if spec.destructive %} <span class="badge badge-crit">destructrice</span>{% endif %}</td>
+            <td>{{ spec.permission }}</td>
+            <td>{{ spec.description }}{% if not spec.allowed %} <span class="muted">(niveau insuffisant)</span>{% endif %}</td>
+        </tr>
         {% endfor %}
-    </select>
-    <button
-        @click="
-            fetch('/api/cli/' + command)
-                .then(r => r.json())
-                .then(data => output = JSON.stringify(data, null, 2))
-        "
-    >Exécuter</button>
+    </table>
 
-    <pre x-show="output" x-text="output" class="terminal-output"></pre>
+    <div
+        x-data="{
+            command: '',
+            output: null,
+            error: null,
+            pendingConfirm: false,
+            async submit(confirm) {
+                this.error = null;
+                try {
+                    const r = await fetch('/api/exec', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ command: this.command, confirm: confirm })
+                    });
+                    const data = await r.json();
+                    if (r.status === 409) {
+                        this.pendingConfirm = true;
+                        this.error = data.detail;
+                        return;
+                    }
+                    this.pendingConfirm = false;
+                    if (!r.ok) {
+                        this.error = data.detail || 'Erreur.';
+                        this.output = null;
+                        return;
+                    }
+                    this.output = data;
+                } catch (e) {
+                    this.error = String(e);
+                }
+            }
+        }"
+        style="margin-top:1rem;"
+    >
+        <input
+            type="text"
+            x-model="command"
+            placeholder="ex: ls . / pwd / mkdir sous_dossier"
+            style="width:60%;padding:0.5rem;background:#171a21;color:#e6e6e6;border:1px solid #2a2e37;border-radius:6px;"
+            @keydown.enter="submit(false)"
+        >
+        <button @click="submit(false)">Exécuter</button>
+        <button x-show="pendingConfirm" @click="submit(true)" style="background:#5b1f1f;border-color:#7a2a2a;">Confirmer (destructif)</button>
+
+        <p x-show="error" x-text="error" class="hint" style="color:#e05a5a;"></p>
+        <pre x-show="output" class="terminal-output" x-text="output ? (output.stdout || '') + (output.stderr || '') + '\n[code retour: ' + output.returncode + ']' : ''"></pre>
+    </div>
 </div>
 {% endblock %}

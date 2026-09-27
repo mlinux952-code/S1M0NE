@@ -27,7 +27,9 @@ from ai.gateway import converse as ai_converse
 from ai.gateway import reset_conversation
 from connectors.engine import available_connectors, search_all
 from core import memory as memory_module
+from core import permissions
 from core.config import settings
+from core.shell_runner import run_command as run_shell_command
 from core.timeutil import format_timestamp
 from system.healthcheck import run_all_checks
 from system.monitor import get_platform_info, get_snapshot, resource_level
@@ -53,6 +55,9 @@ app.add_typer(task_app, name="task")
 
 memory_app = typer.Typer(help="Inspection de la mémoire persistante (Phase 7).")
 app.add_typer(memory_app, name="memory")
+
+exec_app = typer.Typer(help="Commandes système réelles, en liste blanche (Phase 9 - Sécurité).")
+app.add_typer(exec_app, name="exec")
 
 
 _COMMANDS_NEEDING_DB = {"status", "task", "search", "chat", "memory"}
@@ -490,6 +495,78 @@ def memory_forget(
         raise typer.Exit(code=0)
     memory_module.forget(level, key)
     console.print(f"[yellow]Supprimé : {level}/{key}[/yellow]")
+
+
+@exec_app.command("list")
+def exec_list() -> None:
+    """Liste la totalité de la liste blanche des commandes système (Phase 9), avec le niveau de
+    permission requis pour chacune et le niveau actuellement configuré pour ce terminal local."""
+    level = permissions.cli_level()
+    table = Table(title="S1M0NE — commandes système (liste blanche)")
+    table.add_column("Commande")
+    table.add_column("Permission requise")
+    table.add_column("Destructrice")
+    table.add_column("Chemin")
+    table.add_column("Description")
+    for spec in permissions.available_commands():
+        allowed = spec.permission <= level
+        perm_style = "green" if allowed else "grey58"
+        table.add_row(
+            spec.name,
+            f"[{perm_style}]{spec.permission.name}[/{perm_style}]",
+            "[bold red]oui[/bold red]" if spec.destructive else "non",
+            "oui" if spec.takes_path else "—",
+            spec.description if allowed else f"[grey58]{spec.description} (niveau insuffisant)[/grey58]",
+        )
+    console.print(table)
+    console.print(
+        f"Niveau du terminal local : [bold]{level.name}[/bold] "
+        r"(config.toml \[security] cli_permission_level, ou $S1MONE_CLI_PERMISSION_LEVEL). "
+        f"Bac à sable des chemins : [bold]{settings.fs_root}[/bold]."
+    )
+
+
+@exec_app.command("run")
+def exec_run(
+    command: str = typer.Argument(..., help="Commande complète, ex: 'ls .' ou 'rm brouillon.txt'."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Confirmer d'avance une commande destructrice."),
+) -> None:
+    """Exécute une commande système réelle, si elle est dans la liste blanche et que le niveau
+    de permission du terminal local le permet. Les commandes destructrices (rm, rmdir) demandent
+    toujours une confirmation, sauf si --yes est passé."""
+    try:
+        result = run_shell_command(
+            command,
+            level=permissions.cli_level(),
+            fs_root=settings.fs_root,
+            confirmed=yes,
+        )
+    except permissions.ConfirmationRequiredError:
+        name = command.split()[0] if command.split() else command
+        if not typer.confirm(f"Commande destructrice '{command}' — confirmer l'exécution ?"):
+            console.print("[grey58]Annulé.[/grey58]")
+            raise typer.Exit(code=0) from None
+        result = run_shell_command(
+            command, level=permissions.cli_level(), fs_root=settings.fs_root, confirmed=True
+        )
+    except permissions.UnknownCommandError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=1) from exc
+    except permissions.PermissionError_ as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=1) from exc
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=1) from exc
+
+    if result["stdout"]:
+        console.print(result["stdout"], end="")
+    if result["stderr"]:
+        console.print(f"[yellow]{result['stderr']}[/yellow]", end="")
+    if result.get("timed_out"):
+        raise typer.Exit(code=1)
+    if result["returncode"] not in (0, None):
+        raise typer.Exit(code=result["returncode"])
 
 
 def main() -> None:
