@@ -36,6 +36,7 @@
                     <span class="muted">non proposé</span>
                     {% else %}
                     <form hx-post="/api/discover/install" hx-target="#install-output" hx-swap="innerHTML"
+                          hx-indicator="#install-spinner" hx-on::after-swap="document.getElementById('install-output').scrollIntoView({behavior:'smooth', block:'nearest'})"
                           hx-confirm="Installer réellement '{{ r.name }}' ? Cela télécharge et exécute du code tiers (npm/pip/git), confiné dans un dossier dédié.">
                         <input type="hidden" name="site" value="{{ r.source }}">
                         <input type="hidden" name="name" value="{{ r.name }}">
@@ -51,6 +52,7 @@
         {% endfor %}
         </tbody>
     </table>
+    <p id="install-spinner" class="htmx-indicator muted">⏳ Installation en cours (peut prendre jusqu'à quelques dizaines de secondes selon le réseau)…</p>
     <div id="install-output" style="margin-top:1rem;"></div>
 
     {% if total_pages > 1 %}
