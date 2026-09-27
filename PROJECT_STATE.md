@@ -298,7 +298,24 @@ attendre de sélection précise à chaque étape (même mandat que pour les Phas
   `hx-vals`, réutilisés en JSON pré-sérialisé côté Python pour rester compatible avec l'absence
   du filtre Jinja2 `tojson` non enregistré ici) sur `/partials/search-results`, `/api/search`
   accepte `sort`/`page`/`page_size`.
-- **Suite immédiate** : C.3 (paquet pip d'exemple pour un plugin distribué).
+- **C.3 — Paquet pip d'exemple pour un plugin distribué : faite, testée (10 nouveaux tests
+  `test_plugin_example_package.py`).** L'infrastructure de découverte par entry point existait
+  déjà (`plugins/manager.py` appelait déjà `pm.load_setuptools_entrypoints("s1mone")` avant les
+  fichiers locaux, `list_plugins()` distinguait déjà "fichier local"/"paquet installé") — il
+  manquait un exemple concret et installable. Créé `examples/s1mone-plugin-example/` : paquet pip
+  standard (`pyproject.toml` avec `[project.entry-points.s1mone]`, layout `src/`), connecteur
+  `example-pip` + type de tâche `example-echo`, README dédié expliquant `pip install -e`. Validé
+  manuellement dans un venv jetable (`pip install -e` réussit, entry point du groupe `"s1mone"`
+  bien enregistré et lu par `importlib.metadata`) — non installé dans le venv principal du projet
+  pour ne pas polluer en permanence les résultats de recherche/tâches de toute la suite de tests
+  (aurait cassé l'assertion à liste fermée de 7 connecteurs de `test_web_search.py`). Les tests
+  automatisés simulent donc un paquet installé (mock `importlib.metadata.distributions()`) tout
+  en exerçant le vrai code du paquet d'exemple et le vrai chemin `pluggy.load_setuptools_entrypoints`,
+  à la fois au niveau pluggy nu et via `plugins.manager.get_plugin_manager()` (le chemin réel
+  utilisé par `s1mone plugin list`/`search`/`task submit`).
+- **Suite immédiate** : catégorie C terminée (C.1, C.2, C.3). Plus aucune tâche connue dans
+  `NEXT_STEPS.md` — relire le fichier avec l'utilisateur pour identifier une éventuelle
+  catégorie D, ou considérer le mandat "tous et plus encore" comme rempli.
 
 **Important pour l'utilisateur** : `S1MONE_WEB_PASSWORD` doit être choisi et défini par
 l'utilisateur lui-même dans son `.env` sur sa machine réelle (secret que l'agent ne peut pas

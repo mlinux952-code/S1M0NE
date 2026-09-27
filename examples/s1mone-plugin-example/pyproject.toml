@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "s1mone-plugin-example"
+version = "0.1.0"
+description = "Plugin d'exemple pour S1M0NE, distribué comme un vrai paquet pip (NEXT_STEPS.md §C.3)."
+readme = "README.md"
+requires-python = ">=3.10"
+# Aucune dépendance : ce paquet importe des modules de S1M0NE (connectors.base, plugins.manager)
+# à l'exécution, mais ne déclare volontairement pas S1M0NE comme dépendance pip -- il n'a de sens
+# qu'installé À CÔTÉ d'un checkout de S1M0NE, jamais seul (même logique que plugins_local/).
+dependencies = []
+
+# C'est LA ligne qui compte pour NEXT_STEPS.md §C.3 : un entry point du groupe "s1mone" (voir
+# plugins/hookspecs.py -- HOOK_NAMESPACE = "s1mone"). Une fois ce paquet installé (pip install -e
+# .), `plugins.manager.get_plugin_manager()` le découvre automatiquement via
+# `pluggy.PluginManager.load_setuptools_entrypoints("s1mone")`, sans AUCUNE configuration
+# supplémentaire côté S1M0NE, ni copie de fichier (contrairement aux exemples de
+# plugins_local/examples/, qui doivent être copiés à la main dans plugins_local/).
+[project.entry-points.s1mone]
+example = "s1mone_plugin_example"
+
+[tool.setuptools.packages.find]
+where = ["src"]

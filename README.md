@@ -333,6 +333,27 @@ associée (un plugin est du code Python exécuté avec les mêmes droits que S1M
 ce à quoi tu fais confiance). Un connecteur ou type de tâche déjà intégré ne peut jamais être
 redéfini par un plugin.
 
+### Plugins distribués comme paquet pip (C.3)
+
+Second mécanisme de découverte, pour partager un plugin sans faire copier un fichier à la main :
+un vrai paquet pip installable, avec un entry point du groupe `"s1mone"` dans son
+`pyproject.toml`. S1M0NE le détecte automatiquement au démarrage (`pluggy` +
+`load_setuptools_entrypoints`), sans configuration supplémentaire.
+
+Exemple complet et fonctionnel dans
+[`examples/s1mone-plugin-example/`](./examples/s1mone-plugin-example/) :
+
+```bash
+pip install -e examples/s1mone-plugin-example
+s1mone plugin list                              # affiche "example" — source : paquet installé
+s1mone search bonjour --sources example-pip
+s1mone task submit example-echo --params '{"message": "salut"}'
+```
+
+`s1mone plugin list` distingue toujours les deux sources (`fichier local` vs `paquet installé`),
+et un `pip uninstall s1mone-plugin-example` suffit à le retirer — aucune trace à nettoyer côté
+S1M0NE. Voir le README du paquet d'exemple pour l'adapter à ton propre plugin.
+
 ## Recherche multi-sources (Phase 5)
 
 | Source | Recherche | Authentification |

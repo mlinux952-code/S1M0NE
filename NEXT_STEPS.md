@@ -1,5 +1,9 @@
 # NEXT_STEPS.md — Pistes de réflexion pour la suite
 
+> **Mise à jour** : sur mandat explicite "tous et plus encore", les trois catégories A, B et C
+> ci-dessous (11 pistes) ont toutes été implémentées, testées et poussées. Détail et dates dans
+> `PROJECT_STATE.md`. Ce document reste tel quel comme trace de la réflexion d'origine.
+
 > Les 9 phases du plan initial (méga-prompt) sont terminées, testées et validées sur la machine
 > réelle (voir `PROJECT_STATE.md`). Ce document ne fait pas partie du plan original : c'est une
 > réflexion sur "et maintenant ?", à discuter avec l'utilisateur avant de se lancer dans quoi que
