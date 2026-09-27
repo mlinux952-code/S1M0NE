@@ -60,15 +60,32 @@ Phase 1+).
 
 ## D7 — AI Gateway
 
-- **Décision : interface interne `AIProvider` (ABC) + adaptateurs. Le premier adaptateur réel
-  s'appuiera sur le SDK Python de LiteLLM (pas le proxy serveur) pour bénéficier gratuitement de
-  la traduction vers 100+ fournisseurs, tout en gardant notre propre abstraction au-dessus (pour
-  pouvoir remplacer LiteLLM plus tard sans casser S1M0NE).** `[PROPOSED — Phase 6, pas maintenant]`
-- Justification : évite de réécrire à la main un adaptateur par fournisseur ; le proxy LiteLLM
-  (qui nécessite PostgreSQL+Redis en prod) est explicitement écarté car incompatible avec la
-  contrainte low-resource.
-- Rappel du prompt : aucun grand modèle local sur cette machine — l'IA lourde est systématiquement
-  déportée vers une API distante (gratuite en priorité).
+- **Décision initiale (Phase 0, PROPOSED) : interface interne `AIProvider` (ABC) + adaptateurs, le
+  premier s'appuyant sur le SDK Python de LiteLLM.**
+- **DÉCISION RÉVISÉE ET IMPLÉMENTÉE (Phase 6) : interface interne `AIProvider` (ABC) conservée,
+  mais LiteLLM abandonné au profit d'adaptateurs maison en `httpx` direct (déjà une dépendance du
+  projet), sur exactement le même principe que `connectors.Connector` (Phase 5).** `[DECIDED]`
+- Justification de la révision : à l'usage, les 3 fournisseurs retenus (Groq, OpenRouter, Ollama)
+  exposent tous une API REST simple (2 sont compatibles format OpenAI, le 3e un JSON tout aussi
+  direct) — LiteLLM aurait ajouté des dizaines de sous-dépendances (dont `tiktoken`, compilé) pour
+  un gain marginal, ce qui contredit la règle low-resource-first appliquée partout ailleurs dans
+  le projet (SQLite plutôt que Postgres/Redis, moteur de tâches maison plutôt que Celery/RQ...).
+  Si un jour le nombre de fournisseurs à supporter explose, LiteLLM (ou Pluggy pour les vrais
+  plugins tiers, cf. D9) pourra être réévalué — même logique que la révision D9 (Bitbucket/Gitee).
+- Fournisseurs implémentés, gratuits et sans carte bancaire, choix du fournisseur par défaut
+  laissé à l'utilisateur dans `config/config.toml` (`[ai] default_provider`) :
+  - **Groq** (recommandé par défaut) : rapide, quota généreux (~30 req/min, jusqu'à 500k
+    tokens/jour selon le modèle), vérifié par recherche web en direct (septembre 2026).
+  - **OpenRouter** : catalogue de modèles `:free` qui change régulièrement (vérifié volatile en
+    recherche directe) — modèle configurable sans toucher au code, message d'erreur explicite si
+    le modèle par défaut disparaît du catalogue gratuit.
+  - **Ollama (local)** : à la demande explicite de l'utilisateur, curieux de l'option locale.
+    Rappel du prompt (aucun grand modèle local sur cette machine ~4 Gio RAM) toujours respecté :
+    seul un modèle minuscule (1B, quantifié) est proposé par défaut, présenté honnêtement comme
+    lent et réservé aux tests/besoin de confidentialité — pas comme un usage quotidien confortable.
+- Anti-hallucination (mega-prompt §10/§25) : un fournisseur qui échoue (clé absente, quota
+  dépassé, service injoignable, format de réponse inattendu) lève toujours une erreur explicite
+  et actionnable — jamais de réponse inventée à la place.
 
 ## D8 — Interface Web
 
@@ -151,7 +168,9 @@ Config         : fichier config.toml + .env pour les secrets
 Logs           : logging stdlib, rotation via RotatingFileHandler
 Frontend (Phase 2+): Jinja2 + htmx + Alpine.js
 Tâches (Phase 3+)  : moteur asyncio + SQLite maison
-IA (Phase 6+)      : abstraction interne + LiteLLM SDK comme 1er adaptateur
+IA (Phase 6)       : abstraction interne `AIProvider` + adaptateurs httpx (Groq, OpenRouter,
+                     Ollama local) — voir D7, révisé par rapport à la piste LiteLLM envisagée
+                     en Phase 0
 ```
 
 Aucune dépendance ne nécessite Docker, Kubernetes, Redis, PostgreSQL, Elasticsearch ou Node.js

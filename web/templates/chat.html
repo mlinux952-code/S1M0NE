@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Chat IA{% endblock %}
+{% block content %}
+<h1>Chat IA</h1>
+<p class="hint">Assistant IA (Phase 6). Fournisseurs disponibles :
+    {% for p in providers %}<code title="{{ p.description }}">{{ p.name }}</code>{% if not p.configured %} <span class="muted">(à configurer)</span>{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}.
+    L'historique n'est gardé que dans cette page (pas de mémoire persistante — arrive en Phase 7).
+</p>
+
+<div class="card" x-data="{
+        sending: false,
+        error: '',
+        provider: '{{ providers[0].name if providers else '' }}',
+        messages: [],
+        draft: '',
+        async send() {
+            const text = this.draft.trim();
+            if (!text || this.sending) return;
+            this.error = '';
+            this.messages.push({role: 'user', content: text});
+            this.draft = '';
+            this.sending = true;
+            try {
+                const history = this.messages.slice(0, -1);
+                const res = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({message: text, history: history, provider: this.provider})
+                });
+                const data = await res.json();
+                if (!res.ok) { throw new Error(data.detail || 'Erreur inconnue'); }
+                this.messages.push({role: 'assistant', content: data.reply});
+            } catch (err) {
+                this.error = err.message;
+            } finally {
+                this.sending = false;
+            }
+        }
+    }">
+    <label>Fournisseur :
+        <select x-model="provider">
+            {% for p in providers %}
+            <option value="{{ p.name }}">{{ p.name }}{% if not p.configured %} (à configurer){% endif %}</option>
+            {% endfor %}
+        </select>
+    </label>
+
+    <div style="margin-top:1rem; margin-bottom:1rem;">
+        <template x-for="(m, i) in messages" :key="i">
+            <p><strong x-text="m.role === 'user' ? 'Toi :' : 'S1M0NE :'"></strong> <span x-text="m.content"></span></p>
+        </template>
+        <p x-show="messages.length === 0" class="muted">Pose une question pour démarrer la conversation.</p>
+    </div>
+
+    <p class="muted" x-show="error" x-text="'Erreur : ' + error" style="color:#e05a5a;"></p>
+
+    <form @submit.prevent="send()">
+        <input type="text" x-model="draft" placeholder="Écris ton message..." style="width:400px; padding:0.4rem;" :disabled="sending">
+        <button type="submit" :disabled="sending">
+            <span x-show="!sending">Envoyer</span>
+            <span x-show="sending">Envoi…</span>
+        </button>
+    </form>
+</div>
+{% endblock %}

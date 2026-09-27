@@ -23,6 +23,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
+from ai.base import ChatMessage, ProviderError
+from ai.gateway import available_providers
+from ai.gateway import chat as ai_chat
 from connectors.engine import available_connectors, search_all
 from core.db import init_db
 from core.logging_setup import get_logger
@@ -71,6 +74,25 @@ class TaskSubmitRequest(BaseModel):
 
     type: str
     parameters: dict[str, Any] = Field(default_factory=dict)
+
+
+class ChatHistoryItem(BaseModel):
+    role: str
+    content: str
+
+
+class ChatRequest(BaseModel):
+    """Corps de requête pour POST /api/chat (Phase 6 - AI Gateway).
+
+    L'historique complet est renvoyé par le client à chaque appel : le serveur ne garde aucune
+    session en mémoire pour l'instant (persistance prévue Phase 7 - Mémoire), ce qui reste
+    volontairement simple et sans état côté serveur.
+    """
+
+    message: str
+    history: list[ChatHistoryItem] = Field(default_factory=list)
+    provider: str | None = None
+    model: str | None = None
 
 
 @asynccontextmanager
@@ -211,6 +233,27 @@ def create_app() -> FastAPI:
     def search_page(request: Request) -> HTMLResponse:
         return templates.TemplateResponse(
             request, "search.html", {"sources": available_connectors()}
+        )
+
+    @app.get("/api/chat/providers")
+    def api_chat_providers() -> dict[str, Any]:
+        return {"providers": available_providers()}
+
+    @app.post("/api/chat")
+    async def api_chat(body: ChatRequest) -> dict[str, Any]:
+        if not body.message.strip():
+            raise HTTPException(status_code=400, detail="Message vide.")
+        messages = [ChatMessage(role=h.role, content=h.content) for h in body.history]
+        messages.append(ChatMessage(role="user", content=body.message.strip()))
+        try:
+            return await ai_chat(messages, provider=body.provider, model=body.model)
+        except ProviderError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    @app.get("/chat", response_class=HTMLResponse)
+    def chat_page(request: Request) -> HTMLResponse:
+        return templates.TemplateResponse(
+            request, "chat.html", {"providers": available_providers()}
         )
 
     @app.get("/", response_class=HTMLResponse)

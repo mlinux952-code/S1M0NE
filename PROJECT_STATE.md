@@ -25,7 +25,14 @@
   réelle.** Commande `s1mone search <terme> [--sources ...] [--limit N] [--list-sources]` en CLI,
   page `/search` (formulaire htmx) + `/api/search` + `/api/search/sources` côté web. Deux bugs
   réels détectés et corrigés après retour utilisateur (voir Historique ci-dessous).
-- **99/99 tests automatisés passent**, sandbox et machine réelle.
+- **PHASE 6 — AI GATEWAY : terminée et testée dans le sandbox. Pas encore validée sur la machine
+  réelle** (à faire par l'utilisateur après `git pull && ./install.sh`). Assistant IA
+  conversationnel gratuit, sans carte bancaire : `s1mone chat` (CLI, mode message unique ou
+  interactif) + page `/chat` (web). 3 fournisseurs interchangeables sans toucher au code
+  (config.toml `[ai] default_provider`) : Groq (recommandé), OpenRouter, Ollama (local,
+  expérimental). Voir DECISIONS.md §D7 (révisé : LiteLLM abandonné au profit d'adaptateurs httpx
+  maison, plus légers).
+- **126/126 tests automatisés passent** dans le sandbox.
 
 ## Workflow de livraison (actuel, définitif)
 
@@ -92,11 +99,13 @@ Tous les connecteurs passent par le Cache Manager (Phase 4, TTL configurable dan
 
 ## Prochaine étape
 
-Pas encore démarrée. Candidats du plan initial restants :
-- **Phase 6 — IA / AI Gateway** : brancher un vrai LLM (interface interne + LiteLLM SDK comme
-  premier adaptateur). Nécessite des décisions de l'utilisateur (fournisseur, clé API, budget,
-  cloud vs local) avant de coder quoi que ce soit.
+Phase 6 (IA) codée et testée en sandbox, en attente de validation sur la machine réelle de
+l'utilisateur (`git pull && ./install.sh`, puis `s1mone chat --list-providers`, puis configurer
+au moins une clé gratuite dans `.env` pour tester une vraie conversation).
+
+Candidats du plan initial restants après validation de la Phase 6 :
 - **Phase 7 — Mémoire** : système de mémoire/contexte persistant (actuellement un lien désactivé
-  dans la nav web, "Arrive en Phase 7").
+  dans la nav web, "Arrive en Phase 7") — permettrait aussi de garder l'historique du chat IA
+  entre deux sessions, ce qui n'est pas encore le cas (historique en mémoire process uniquement).
 - Améliorations transverses possibles : affichage terminal de `s1mone search` (tableau large),
   pagination, tri par pertinence/stars.

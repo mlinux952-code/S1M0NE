@@ -127,6 +127,31 @@ class Settings:
     def cache_default_ttl_seconds(self) -> int:
         return int(self.raw_toml.get("cache", {}).get("default_ttl_seconds", 300))
 
+    @property
+    def ai_default_provider(self) -> str:
+        """Fournisseur IA utilisé quand aucun n'est précisé explicitement (CLI --provider,
+        API ?provider=...). L'environnement (.env ou export shell) a priorité sur config.toml."""
+        override = self.env_values.get("AI_DEFAULT_PROVIDER") or os.environ.get(
+            "AI_DEFAULT_PROVIDER"
+        )
+        if override:
+            return override
+        return str(self.raw_toml.get("ai", {}).get("default_provider", "") or "")
+
+    def ai_provider_model(self, provider_name: str) -> str | None:
+        """Surcharge de modèle pour un fournisseur donné (config.toml [ai.<provider>] model=...).
+
+        Retourne None si rien n'est configuré : le fournisseur utilisera alors son propre
+        `default_model` codé en dur (voir ai/providers/*.py).
+        """
+        ai_section = self.raw_toml.get("ai", {})
+        provider_section = ai_section.get(provider_name, {}) if isinstance(ai_section, dict) else {}
+        if isinstance(provider_section, dict):
+            model = provider_section.get("model")
+            if model:
+                return str(model)
+        return None
+
     def get_secret(self, name: str, default: str | None = None) -> str | None:
         """Lit un secret : priorité à l'environnement système, puis .env, jamais config.toml."""
         return os.environ.get(name) or self.env_values.get(name) or default

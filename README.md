@@ -20,6 +20,10 @@ extensible vers l'IA — conçue en priorité pour tourner confortablement sur u
 - **Phase 5 — Connecteurs de recherche (npm, Hugging Face, GitHub, GitLab, Codeberg, PyPI,
   SourceForge) : terminée, testée et validée sur la machine réelle**, avec intégration complète
   CLI (`s1mone search`) et web (`/search`).
+- **Phase 6 — AI Gateway (assistant IA conversationnel, gratuit et sans carte bancaire) : terminée
+  et testée en sandbox, en attente de validation sur la machine réelle.** `s1mone chat` (CLI) et
+  page `/chat` (web), 3 fournisseurs interchangeables : Groq (recommandé), OpenRouter, Ollama
+  (local, expérimental).
 
 Le détail complet, phase par phase, est dans [`PROJECT_STATE.md`](./PROJECT_STATE.md).
 
@@ -66,10 +70,28 @@ s1mone search react                             # recherche dans les 7 connecteu
 s1mone search flask --sources npm,pypi --limit 3
 s1mone search --list-sources                    # liste les sources disponibles
 
-s1mone web                                      # dashboard + terminal web + recherche + API
+s1mone chat "explique-moi ce qu'est une API REST" # une question, une réponse
+s1mone chat                                     # conversation interactive (tape 'exit' pour sortir)
+s1mone chat --list-providers                    # voir les fournisseurs dispo et leur statut
+
+s1mone web                                      # dashboard + terminal web + recherche + chat IA
                                                  # (le worker de tâches tourne dans ce même
                                                  # processus, pas besoin de le lancer à part)
 ```
+
+## Assistant IA (Phase 6)
+
+Gratuit et sans carte bancaire par défaut. Aucune clé n'est jamais demandée par l'agent : à
+ajouter toi-même dans ton fichier `.env` (jamais commité).
+
+| Fournisseur | Configuration | Notes |
+|---|---|---|
+| **Groq** (recommandé) | `GROQ_API_KEY` dans `.env` — clé gratuite sur https://console.groq.com/keys | Rapide, quota généreux (~30 req/min) |
+| **OpenRouter** | `OPENROUTER_API_KEY` dans `.env` — clé gratuite sur https://openrouter.ai/keys | Catalogue de modèles gratuits qui change souvent ; ajustable dans `config.toml` |
+| **Ollama** (local) | Rien à configurer si installé par défaut (https://ollama.com) | 100% privé et hors-ligne, mais lent sur cette machine (~4 Gio RAM) — pour tester, pas pour un usage quotidien |
+
+Le fournisseur par défaut se change dans `config/config.toml`, section `[ai] default_provider`,
+ou ponctuellement avec `s1mone chat --provider openrouter "..."`.
 
 ## Recherche multi-sources (Phase 5)
 

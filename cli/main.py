@@ -21,6 +21,9 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from ai.base import ChatMessage, ProviderError
+from ai.gateway import available_providers
+from ai.gateway import chat as ai_chat
 from connectors.engine import available_connectors, search_all
 from core.config import settings
 from core.timeutil import format_timestamp
@@ -212,6 +215,77 @@ def search(
     if errors:
         for src, msg in errors.items():
             console.print(f"[bold red]Erreur ({src}) :[/bold red] {msg}")
+
+
+@app.command()
+def chat(
+    message: Optional[str] = typer.Argument(
+        None, help="Message à envoyer (facultatif : sans message, ouvre une conversation interactive)."
+    ),
+    provider: Optional[str] = typer.Option(
+        None, "--provider", help="Fournisseur IA à utiliser (défaut : config.toml [ai] default_provider)."
+    ),
+    model: Optional[str] = typer.Option(
+        None, "--model", help="Modèle à utiliser (défaut : celui du fournisseur choisi)."
+    ),
+    list_providers: bool = typer.Option(
+        False, "--list-providers", help="Affiche les fournisseurs IA disponibles et leur statut."
+    ),
+) -> None:
+    """Discute avec un assistant IA (Phase 6). Gratuit par défaut (Groq), voir README.md pour
+    changer de fournisseur (OpenRouter, Ollama en local) ou en configurer un nouveau."""
+    if list_providers:
+        table = Table(title="S1M0NE — fournisseurs IA disponibles")
+        table.add_column("Fournisseur")
+        table.add_column("Statut")
+        table.add_column("Modèle par défaut")
+        table.add_column("Description", max_width=60)
+        for p in available_providers():
+            status = "[green]configuré[/green]" if p["configured"] else "[yellow]à configurer[/yellow]"
+            table.add_row(str(p["name"]), status, str(p["default_model"]), str(p["description"]))
+        console.print(table)
+        for p in available_providers():
+            if not p["configured"]:
+                console.print(f"[grey58]{p['name']} : {p['setup_hint']}[/grey58]")
+        return
+
+    if message and message.strip():
+        history = [ChatMessage(role="user", content=message.strip())]
+        try:
+            outcome = asyncio.run(ai_chat(history, provider=provider, model=model))
+        except ProviderError as exc:
+            console.print(f"[bold red]Erreur IA :[/bold red] {exc}")
+            raise typer.Exit(code=1) from exc
+        console.print(f"[grey58]({outcome['provider']} / {outcome['model']})[/grey58]")
+        console.print(outcome["reply"])
+        return
+
+    # Pas de message : conversation interactive (historique gardé en mémoire pour cette session
+    # uniquement — la persistance entre sessions est prévue pour la Phase 7, Mémoire).
+    console.print(
+        "[bold]S1M0NE — chat interactif[/bold] (tape 'exit' ou Ctrl+C pour quitter)"
+    )
+    history = []
+    while True:
+        try:
+            user_input = console.input("[bold cyan]toi >[/bold cyan] ")
+        except (EOFError, KeyboardInterrupt):
+            console.print("\n[grey58]Fin de la conversation.[/grey58]")
+            break
+        if not user_input.strip():
+            continue
+        if user_input.strip().lower() in {"exit", "quit"}:
+            console.print("[grey58]Fin de la conversation.[/grey58]")
+            break
+        history.append(ChatMessage(role="user", content=user_input.strip()))
+        try:
+            outcome = asyncio.run(ai_chat(history, provider=provider, model=model))
+        except ProviderError as exc:
+            console.print(f"[bold red]Erreur IA :[/bold red] {exc}")
+            history.pop()  # on ne garde pas un échange raté dans l'historique
+            continue
+        history.append(ChatMessage(role="assistant", content=outcome["reply"]))
+        console.print(f"[bold magenta]s1mone >[/bold magenta] {outcome['reply']}")
 
 
 @task_app.command("submit")

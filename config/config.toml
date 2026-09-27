@@ -41,7 +41,19 @@ enabled_connectors = []
 default_ttl_seconds = 300
 
 [ai]
-default_provider = ""
+# Fournisseur utilisé par défaut par "s1mone chat" et /api/chat si --provider n'est pas précisé.
+# Choix possibles : "groq" (recommandé, gratuit, rapide), "openrouter" (gratuit, catalogue
+# variable), "ollama" (local, privé, mais lent sur cette machine). Voir README.md.
+default_provider = "groq"
+
+# Surcharge de modèle par fournisseur (facultatif — sinon chaque fournisseur a un modèle par
+# défaut raisonnable codé en dur dans ai/providers/*.py).
+# [ai.groq]
+# model = "llama-3.1-8b-instant"
+# [ai.openrouter]
+# model = "meta-llama/llama-3.3-70b-instruct:free"
+# [ai.ollama]
+# model = "qwen2.5:0.5b"
 
 [security]
 require_confirmation_for_dangerous_commands = true
