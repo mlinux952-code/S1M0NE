@@ -250,9 +250,20 @@ attendre de sélection précise à chaque étape (même mandat que pour les Phas
   `s1mone notify list/read/clear`. Dashboard web : cloche avec compteur non-lues (htmx, polling
   20s), liste déroulante, clic pour marquer lu. Best-effort desktop (`notify-send` si présent,
   échoue silencieusement sinon).
-- **Suite immédiate** : B.4 (mémoire "project"), B.1 (tâches récurrentes), B.2 (assistant
-  agentique/function calling — le plus sensible côté sécurité, à traiter avec le même soin que la
-  Phase 9), puis C (page web mémoire, tri/pagination recherche, paquet pip d'exemple).
+- **B.4 — Mémoire "project" enfin consommée : faite, testée (14 tests `test_projects.py` + 12
+  tests ajoutés à `test_memory.py` + 4 à `test_ai_gateway.py` + 3 à `test_web_chat.py` = 33
+  nouveaux tests).** `core/projects.py` (CRUD, table `projects` vide depuis la Phase 1).
+  `core/memory.py` : niveau "project" maintenant scopé par `project_id` obligatoire (namespacing
+  de clé, sans migration de schéma) — changement de comportement assumé et documenté (D16), sans
+  impact réel puisque ce niveau n'était jamais exploité. `ai/gateway.py converse()` accepte
+  `project_id` : conversation IA isolée par projet. CLI `s1mone project create/list/show/delete`,
+  `--project` sur `s1mone chat` et `s1mone memory list/show/forget`. Web : `project_id` sur
+  `POST /api/chat` et `GET /api/chat/history`/`POST /api/chat/reset`, `GET /api/projects`.
+  Correction de compatibilité : 5 tests CLI/web chat préexistants (mocks avec signature figée)
+  mis à jour pour accepter le nouveau paramètre `project_id`.
+- **Suite immédiate** : B.1 (tâches récurrentes), B.2 (assistant agentique/function calling — le
+  plus sensible côté sécurité, à traiter avec le même soin que la Phase 9), puis C (page web
+  mémoire, tri/pagination recherche, paquet pip d'exemple).
 
 **Important pour l'utilisateur** : `S1MONE_WEB_PASSWORD` doit être choisi et défini par
 l'utilisateur lui-même dans son `.env` sur sa machine réelle (secret que l'agent ne peut pas

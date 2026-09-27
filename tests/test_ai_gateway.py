@@ -407,3 +407,59 @@ def test_check_all_providers_checks_every_registered_provider(monkeypatch):
     assert by_name["ok-one"]["ok"] is True
     assert by_name["broken-one"]["ok"] is False
     assert by_name["unconfigured-one"]["configured"] is False
+
+
+# --- Conversation scopée par projet (NEXT_STEPS.md §B.4) ----------------------------------------
+
+
+def test_converse_with_unknown_project_raises_clear_error(monkeypatch):
+    fake = _FakeProvider(reply="ok")
+    monkeypatch.setattr(gateway_module, "_PROVIDERS", {"fake": fake})
+    with pytest.raises(ValueError, match="Projet inconnu"):
+        asyncio.run(gateway_module.converse("salut", provider="fake", project_id="id-inexistant"))
+
+
+def test_converse_project_scoped_history_is_isolated_from_global(monkeypatch):
+    from core import projects
+
+    project_id = projects.create_project("Projet Test")
+    fake = _FakeProvider(reply="réponse projet")
+    monkeypatch.setattr(gateway_module, "_PROVIDERS", {"fake": fake})
+
+    asyncio.run(gateway_module.converse("dans le projet", provider="fake", project_id=project_id))
+    asyncio.run(gateway_module.converse("hors projet", provider="fake"))
+
+    project_history = gateway_module.get_conversation_history(project_id=project_id)
+    global_history = gateway_module.get_conversation_history()
+
+    assert [m.content for m in project_history] == ["dans le projet", "réponse projet"]
+    assert [m.content for m in global_history] == ["hors projet", "réponse projet"]
+
+
+def test_converse_project_scoped_isolated_between_two_projects(monkeypatch):
+    from core import projects
+
+    p1 = projects.create_project("P1")
+    p2 = projects.create_project("P2")
+    fake = _FakeProvider(reply="ok")
+    monkeypatch.setattr(gateway_module, "_PROVIDERS", {"fake": fake})
+
+    asyncio.run(gateway_module.converse("message p1", provider="fake", project_id=p1))
+    history_p2 = gateway_module.get_conversation_history(project_id=p2)
+    assert history_p2 == []
+
+
+def test_reset_conversation_with_project_id_only_clears_that_project(monkeypatch):
+    from core import projects
+
+    project_id = projects.create_project("À réinitialiser")
+    fake = _FakeProvider(reply="ok")
+    monkeypatch.setattr(gateway_module, "_PROVIDERS", {"fake": fake})
+
+    asyncio.run(gateway_module.converse("msg", provider="fake", project_id=project_id))
+    asyncio.run(gateway_module.converse("msg global", provider="fake"))
+
+    gateway_module.reset_conversation(project_id=project_id)
+
+    assert gateway_module.get_conversation_history(project_id=project_id) == []
+    assert len(gateway_module.get_conversation_history()) == 2

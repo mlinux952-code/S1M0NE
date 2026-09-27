@@ -42,6 +42,7 @@ _PROVIDERS: dict[str, AIProvider] = {
 # via le Memory Manager (core/memory.py, niveau "persistent") — voir DECISIONS.md.
 
 _MEMORY_LEVEL = "persistent"
+_PROJECT_MEMORY_LEVEL = "project"
 _HISTORY_KEY = "chat_history"
 _SYSTEM_PROMPT_KEY = "ai_system_prompt"
 
@@ -59,27 +60,38 @@ DEFAULT_SYSTEM_PROMPT = (
 )
 
 
-def _load_history() -> list[ChatMessage]:
-    raw = memory.recall(_MEMORY_LEVEL, _HISTORY_KEY, default=[])
+def _memory_scope(project_id: str | None) -> tuple[str, str | None]:
+    """Choisit le niveau de mémoire à utiliser : "project" (scopé à un projet précis, NEXT_STEPS
+    §B.4) si `project_id` est fourni, sinon "persistent" (comportement historique, Phase 7)."""
+    return (_PROJECT_MEMORY_LEVEL, project_id) if project_id else (_MEMORY_LEVEL, None)
+
+
+def _load_history(project_id: str | None = None) -> list[ChatMessage]:
+    level, pid = _memory_scope(project_id)
+    raw = memory.recall(level, _HISTORY_KEY, default=[], project_id=pid)
     return [ChatMessage(role=m["role"], content=m["content"]) for m in raw]
 
 
-def _save_history(messages: list[ChatMessage]) -> None:
-    memory.remember(_MEMORY_LEVEL, _HISTORY_KEY, [m.as_dict() for m in messages])
+def _save_history(messages: list[ChatMessage], project_id: str | None = None) -> None:
+    level, pid = _memory_scope(project_id)
+    memory.remember(level, _HISTORY_KEY, [m.as_dict() for m in messages], project_id=pid)
 
 
-def _system_prompt() -> str:
-    return memory.recall(_MEMORY_LEVEL, _SYSTEM_PROMPT_KEY, default=DEFAULT_SYSTEM_PROMPT)
+def _system_prompt(project_id: str | None = None) -> str:
+    level, pid = _memory_scope(project_id)
+    return memory.recall(level, _SYSTEM_PROMPT_KEY, default=DEFAULT_SYSTEM_PROMPT, project_id=pid)
 
 
-def reset_conversation() -> None:
-    """Efface la conversation persistante : le prochain message repart d'une page blanche."""
-    memory.forget(_MEMORY_LEVEL, _HISTORY_KEY)
+def reset_conversation(project_id: str | None = None) -> None:
+    """Efface la conversation (globale par défaut, ou celle d'un projet précis) : le prochain
+    message repart d'une page blanche."""
+    level, pid = _memory_scope(project_id)
+    memory.forget(level, _HISTORY_KEY, project_id=pid)
 
 
-def get_conversation_history() -> list[ChatMessage]:
-    """Historique persistant actuel (sans le message système), pour affichage CLI/web."""
-    return _load_history()
+def get_conversation_history(project_id: str | None = None) -> list[ChatMessage]:
+    """Historique actuel (sans le message système), pour affichage CLI/web."""
+    return _load_history(project_id=project_id)
 
 
 def available_providers() -> list[dict[str, object]]:
@@ -141,21 +153,31 @@ async def converse(
     model: str | None = None,
     reset: bool = False,
     use_memory: bool = True,
+    project_id: str | None = None,
 ) -> dict[str, object]:
     """Point d'entrée "avec mémoire" (Phase 7), utilisé par défaut par la CLI et le web.
 
-    Ajoute `message` à la conversation persistante, l'envoie avec tout l'historique + un message
-    système décrivant S1M0NE (pour que l'assistant sache ce qu'il est), puis persiste l'échange.
+    Ajoute `message` à la conversation, l'envoie avec tout l'historique + un message système
+    décrivant S1M0NE (pour que l'assistant sache ce qu'il est), puis persiste l'échange.
 
     `reset=True` : efface la conversation précédente avant d'envoyer ce message.
     `use_memory=False` : ne lit ni n'écrit l'historique (comportement Phase 6 d'origine, pour un
     appel ponctuel qui ne doit pas polluer/dépendre de la conversation en cours).
+    `project_id` (NEXT_STEPS §B.4) : scope la conversation à un projet précis (mémoire séparée de
+    la conversation "globale" et des autres projets) au lieu du niveau "persistent" par défaut.
+    Lève ValueError si le projet n'existe pas (voir 's1mone project list').
     """
-    if reset:
-        reset_conversation()
+    if project_id:
+        from core.projects import get_project  # import local : évite un cycle ai <-> core
 
-    history = _load_history() if use_memory else []
-    outgoing = [ChatMessage(role="system", content=_system_prompt()), *history]
+        if get_project(project_id) is None:
+            raise ValueError(f"Projet inconnu : '{project_id}' (voir 's1mone project list').")
+
+    if reset:
+        reset_conversation(project_id=project_id)
+
+    history = _load_history(project_id=project_id) if use_memory else []
+    outgoing = [ChatMessage(role="system", content=_system_prompt(project_id=project_id)), *history]
     outgoing.append(ChatMessage(role="user", content=message))
 
     outcome = await chat(outgoing, provider=provider, model=model)
@@ -165,7 +187,7 @@ async def converse(
         history.append(ChatMessage(role="assistant", content=outcome["reply"]))
         if len(history) > MAX_HISTORY_MESSAGES:
             history = history[-MAX_HISTORY_MESSAGES:]
-        _save_history(history)
+        _save_history(history, project_id=project_id)
 
     return outcome
 

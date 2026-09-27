@@ -11,11 +11,15 @@ from cli.main import app
 runner = CliRunner()
 
 
-async def _fake_ai_converse(message, provider=None, model=None, reset=False, use_memory=True):
+async def _fake_ai_converse(
+    message, provider=None, model=None, reset=False, use_memory=True, project_id=None
+):
     return {"provider": provider or "groq", "model": "fake-model", "reply": "réponse factice"}
 
 
-async def _fake_ai_converse_error(message, provider=None, model=None, reset=False, use_memory=True):
+async def _fake_ai_converse_error(
+    message, provider=None, model=None, reset=False, use_memory=True, project_id=None
+):
     raise ProviderError("Fournisseur non configuré (test).")
 
 
@@ -58,7 +62,7 @@ def test_chat_interactive_round_trip(monkeypatch):
 def test_chat_interactive_slash_reset_calls_reset_conversation(monkeypatch):
     called = {"n": 0}
 
-    def fake_reset():
+    def fake_reset(project_id=None):
         called["n"] += 1
 
     monkeypatch.setattr(cli_main, "ai_converse", _fake_ai_converse)
@@ -72,7 +76,7 @@ def test_chat_interactive_slash_reset_calls_reset_conversation(monkeypatch):
 def test_chat_reset_flag_calls_reset_conversation_before_interactive_loop(monkeypatch):
     called = {"n": 0}
 
-    def fake_reset():
+    def fake_reset(project_id=None):
         called["n"] += 1
 
     monkeypatch.setattr(cli_main, "ai_converse", _fake_ai_converse)

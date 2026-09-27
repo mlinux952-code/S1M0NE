@@ -217,6 +217,23 @@ Pour un démarrage dès le boot, avant toute connexion (facultatif, sans droits 
 `loginctl enable-linger $USER`. Si `systemd` n'est pas disponible sur ta machine, le script
 l'indique clairement et propose une alternative (`cron @reboot`).
 
+## Projets (B.4)
+
+Regroupe de la mémoire (pour l'instant : la conversation IA) sous un projet précis, séparée de la
+conversation "globale" et des autres projets :
+
+```bash
+s1mone project create "Mon Blog" --description "Refonte du site"
+s1mone project list
+s1mone project show "Mon Blog"       # id ou nom acceptés partout
+s1mone chat --project "Mon Blog" "Rappelle-moi la stack choisie pour ce projet"
+s1mone memory list --level project --project "Mon Blog"
+s1mone project delete "Mon Blog"     # supprime aussi sa mémoire (sauf --keep-memory)
+```
+
+Idem côté web : `POST /api/chat` accepte un champ `project_id`, `GET /api/projects` liste les
+projets existants.
+
 ## Notifications (B.3)
 
 Quand une tâche se termine (succès ou échec), une notification est créée automatiquement :

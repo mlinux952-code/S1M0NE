@@ -33,6 +33,7 @@ from core import permissions
 from core.config import settings
 from core.db import backup_db, list_backups
 from core import notifications as notifications_module
+from core import projects as projects_module
 from core.shell_runner import run_command as run_shell_command
 from core.timeutil import format_timestamp
 from plugins.manager import list_plugins
@@ -73,8 +74,11 @@ app.add_typer(backup_app, name="backup")
 notify_app = typer.Typer(help="Notifications locales (fin de tâche, erreurs).")
 app.add_typer(notify_app, name="notify")
 
+project_app = typer.Typer(help="Projets (regroupent de la mémoire dédiée, ex. une conversation IA par projet).")
+app.add_typer(project_app, name="project")
 
-_COMMANDS_NEEDING_DB = {"status", "task", "search", "chat", "memory", "backup", "notify"}
+
+_COMMANDS_NEEDING_DB = {"status", "task", "search", "chat", "memory", "backup", "notify", "project"}
 
 
 @app.callback()
@@ -98,6 +102,15 @@ _STATUS_COLORS = {
 
 
 _fmt_ts = format_timestamp  # alias local, logique partagée avec le web (core/timeutil.py)
+
+
+def _resolve_project_or_exit(identifier: str) -> str:
+    """Résout un identifiant de projet (id ou nom) en id réel, ou quitte proprement sinon."""
+    project = projects_module.resolve_project(identifier)
+    if project is None:
+        console.print(f"[red]Projet inconnu : '{identifier}' (voir 's1mone project list').[/red]")
+        raise typer.Exit(code=1)
+    return project["id"]
 
 
 @app.command()
@@ -283,10 +296,16 @@ def chat(
         "--no-memory",
         help="Appel ponctuel : ne lit ni n'écrit la conversation persistante (Phase 7).",
     ),
+    project: Optional[str] = typer.Option(
+        None,
+        "--project",
+        help="Id ou nom de projet (NEXT_STEPS §B.4) : conversation séparée, propre à ce projet.",
+    ),
 ) -> None:
     """Discute avec un assistant IA (Phase 6), qui se souvient de la conversation d'une session à
     l'autre (Phase 7 - Mémoire). Gratuit par défaut (Groq), voir README.md pour changer de
     fournisseur (OpenRouter, Ollama en local)."""
+    project_id = _resolve_project_or_exit(project) if project else None
     if list_providers:
         table = Table(title="S1M0NE — fournisseurs IA disponibles")
         table.add_column("Fournisseur")
@@ -337,6 +356,7 @@ def chat(
                     model=model,
                     reset=reset,
                     use_memory=not no_memory,
+                    project_id=project_id,
                 )
             )
         except ProviderError as exc:
@@ -349,12 +369,13 @@ def chat(
     # Pas de message : conversation interactive. La mémoire (Phase 7) est persistée en base entre
     # deux lancements : fermer puis rouvrir "s1mone chat" reprend la conversation là où elle en
     # était, sauf --reset ou '/reset' en cours de session.
+    scope_hint = f" (projet : {project})" if project else ""
     console.print(
-        "[bold]S1M0NE — chat interactif[/bold] (mémoire persistante activée — "
+        f"[bold]S1M0NE — chat interactif{scope_hint}[/bold] (mémoire persistante activée — "
         "tape 'exit' pour quitter, '/reset' pour repartir de zéro)"
     )
     if reset:
-        reset_conversation()
+        reset_conversation(project_id=project_id)
         console.print("[grey58]Conversation précédente effacée.[/grey58]")
     while True:
         try:
@@ -369,12 +390,18 @@ def chat(
             console.print("[grey58]Fin de la conversation.[/grey58]")
             break
         if text.lower() == "/reset":
-            reset_conversation()
+            reset_conversation(project_id=project_id)
             console.print("[grey58]Conversation effacée. On repart de zéro.[/grey58]")
             continue
         try:
             outcome = asyncio.run(
-                ai_converse(text, provider=provider, model=model, use_memory=not no_memory)
+                ai_converse(
+                    text,
+                    provider=provider,
+                    model=model,
+                    use_memory=not no_memory,
+                    project_id=project_id,
+                )
             )
         except ProviderError as exc:
             console.print(f"[bold red]Erreur IA :[/bold red] {exc}")
@@ -490,22 +517,27 @@ def memory_list(
         "--level",
         help=f"Filtrer par niveau ({', '.join(memory_module.VALID_LEVELS)}). Défaut : tous.",
     ),
+    project: Optional[str] = typer.Option(
+        None, "--project", help="Filtrer sur un projet précis (id ou nom, niveau 'project')."
+    ),
 ) -> None:
     """Liste les entrées mémorisées (métadonnées uniquement — voir 'memory show' pour le contenu).
 
     Transparence (Phase 7) : tout ce que S1M0NE retient de toi (ex. l'historique de chat) reste
     inspectable et supprimable à tout moment, rien n'est caché."""
+    project_id = _resolve_project_or_exit(project) if project else None
     try:
-        entries = memory_module.list_memory(level)
+        entries = memory_module.list_memory(level, project_id=project_id)
     except ValueError as exc:
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(code=1) from exc
     table = Table(title="S1M0NE — mémoire")
     table.add_column("Niveau")
     table.add_column("Clé")
+    table.add_column("Projet")
     table.add_column("Enregistrée à")
     for e in entries:
-        table.add_row(e["level"], e["key"], _fmt_ts(e["created_at"]))
+        table.add_row(e["level"], e["key"], e.get("project_id", "") or "", _fmt_ts(e["created_at"]))
     console.print(table)
     if not entries:
         console.print("[grey58]Aucune entrée pour ce filtre.[/grey58]")
@@ -515,10 +547,14 @@ def memory_list(
 def memory_show(
     level: str = typer.Argument(..., help=f"Niveau ({', '.join(memory_module.VALID_LEVELS)})."),
     key: str = typer.Argument(..., help="Clé (voir 's1mone memory list')."),
+    project: Optional[str] = typer.Option(
+        None, "--project", help="Id ou nom de projet (requis si level='project')."
+    ),
 ) -> None:
     """Affiche le contenu complet d'une entrée mémorisée."""
+    project_id = _resolve_project_or_exit(project) if project else None
     try:
-        value = memory_module.recall(level, key)
+        value = memory_module.recall(level, key, project_id=project_id)
     except ValueError as exc:
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(code=1) from exc
@@ -532,6 +568,9 @@ def memory_show(
 def memory_forget(
     level: str = typer.Argument(..., help=f"Niveau ({', '.join(memory_module.VALID_LEVELS)})."),
     key: str = typer.Argument(..., help="Clé (voir 's1mone memory list')."),
+    project: Optional[str] = typer.Option(
+        None, "--project", help="Id ou nom de projet (requis si level='project')."
+    ),
     yes: bool = typer.Option(False, "--yes", "-y", help="Ne pas demander de confirmation."),
 ) -> None:
     """Supprime une entrée mémorisée (ex. 'memory forget persistent chat_history' = comme
@@ -539,10 +578,15 @@ def memory_forget(
     if level not in memory_module.VALID_LEVELS:
         console.print(f"[red]Niveau de mémoire invalide : '{level}'. Attendu : {memory_module.VALID_LEVELS}.[/red]")
         raise typer.Exit(code=1)
+    project_id = _resolve_project_or_exit(project) if project else None
     if not yes and not typer.confirm(f"Supprimer définitivement {level}/{key} ?"):
         console.print("[grey58]Annulé.[/grey58]")
         raise typer.Exit(code=0)
-    memory_module.forget(level, key)
+    try:
+        memory_module.forget(level, key, project_id=project_id)
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=1) from exc
     console.print(f"[yellow]Supprimé : {level}/{key}[/yellow]")
 
 
@@ -666,6 +710,69 @@ def backup_list() -> None:
     console.print(table)
     if not backups:
         console.print(f"[grey58]Aucune sauvegarde. Dossier : {settings.backups_dir}[/grey58]")
+
+
+@project_app.command("create")
+def project_create(
+    name: str = typer.Argument(..., help="Nom du projet (unique)."),
+    description: Optional[str] = typer.Option(None, "--description", help="Description libre."),
+    path: Optional[str] = typer.Option(None, "--path", help="Chemin associé (facultatif)."),
+) -> None:
+    """Crée un nouveau projet."""
+    try:
+        project_id = projects_module.create_project(name, description=description, path=path)
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=1) from exc
+    console.print(f"[green]Projet créé :[/green] {project_id} ({name})")
+
+
+@project_app.command("list")
+def project_list() -> None:
+    """Liste tous les projets."""
+    items = projects_module.list_projects()
+    table = Table(title="S1M0NE — projets")
+    table.add_column("Id")
+    table.add_column("Nom")
+    table.add_column("Description")
+    table.add_column("Mis à jour")
+    for p in items:
+        table.add_row(p["id"], p["name"], p.get("description") or "", _fmt_ts(p["updated_at"]))
+    console.print(table)
+    if not items:
+        console.print(
+            "[grey58]Aucun projet. Crée-en un avec 's1mone project create <nom>'.[/grey58]"
+        )
+
+
+@project_app.command("show")
+def project_show(identifier: str = typer.Argument(..., help="Id ou nom du projet.")) -> None:
+    """Affiche le détail d'un projet."""
+    project = projects_module.resolve_project(identifier)
+    if project is None:
+        console.print(f"[red]Projet inconnu : '{identifier}'.[/red]")
+        raise typer.Exit(code=1)
+    console.print_json(json.dumps(project, ensure_ascii=False))
+
+
+@project_app.command("delete")
+def project_delete(
+    identifier: str = typer.Argument(..., help="Id ou nom du projet."),
+    keep_memory: bool = typer.Option(
+        False, "--keep-memory", help="Ne pas effacer la mémoire associée (conservée orpheline)."
+    ),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Ne pas demander de confirmation."),
+) -> None:
+    """Supprime un projet (et sa mémoire associée, sauf --keep-memory)."""
+    project = projects_module.resolve_project(identifier)
+    if project is None:
+        console.print(f"[red]Projet inconnu : '{identifier}'.[/red]")
+        raise typer.Exit(code=1)
+    if not yes and not typer.confirm(f"Supprimer définitivement le projet '{project['name']}' ?"):
+        console.print("[grey58]Annulé.[/grey58]")
+        raise typer.Exit(code=0)
+    projects_module.delete_project(project["id"], delete_memory=not keep_memory)
+    console.print(f"[yellow]Projet supprimé : {project['name']}[/yellow]")
 
 
 @notify_app.command("list")

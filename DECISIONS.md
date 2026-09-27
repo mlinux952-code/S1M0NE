@@ -279,6 +279,32 @@ Phase 1+).
 
 ---
 
+## D16 — Mémoire "project" enfin consommée (post-plan-initial, NEXT_STEPS.md §B.4)
+
+- **Décision : namespacer la clé stockée (`"<project_id>::<clé>"`) plutôt qu'ajouter une colonne
+  `project_id` à la table `memory`.** `[DECIDED]` Évite toute migration de schéma sur des bases
+  déjà installées (cohérent avec le principe déjà appliqué en Phase 7 pour `remember()` — voir
+  plus haut dans ce fichier) ; le reste du code (recall/forget/list_memory) ne voit jamais ce
+  détail d'implémentation, qui reste entièrement interne à `core/memory.py`.
+- **Changement de comportement assumé, sans rétrocompatibilité silencieuse** : `remember()`,
+  `recall()` et `forget()` lèvent maintenant `ValueError` si `level="project"` est utilisé SANS
+  `project_id` (auparavant, cette combinaison était silencieusement acceptée mais n'était jamais
+  réellement exploitée nulle part dans le code, cf. NEXT_STEPS.md : "réservé depuis la Phase 7,
+  jamais consommé"). Comme aucun usage réel n'existait, ce n'est pas traité comme une régression
+  mais comme la première vraie définition de ce que "project" signifie.
+- **`core/projects.py` : CRUD complet sur la table `projects`** (existait depuis la Phase 1, vide
+  jusqu'ici). `delete_project()` supprime par défaut la mémoire associée (`--keep-memory` pour
+  l'éviter) — un projet supprimé ne doit jamais laisser une mémoire orpheline invisible qui
+  continuerait à occuper la base sans qu'on puisse la retrouver autrement que par la connaissance
+  fortuite de son id.
+- **Premier (et pour l'instant seul) consommateur : la conversation IA** (`s1mone chat --project
+  <id ou nom>`, et `project_id` dans `POST /api/chat`). Plutôt qu'un système de "session courante"
+  implicite (ex: un fichier `.s1mone_current_project` sur le disque), le choix est explicite à
+  chaque appel — plus verbeux, mais sans état caché à synchroniser entre CLI et web, cohérent
+  avec le reste de l'architecture (aucun état de session côté client).
+
+---
+
 ## Récapitulatif de la stack retenue pour la Phase 1 (fondation)
 
 ```text

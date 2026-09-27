@@ -24,11 +24,15 @@ def isolated_db(tmp_path, monkeypatch):
     yield
 
 
-async def _fake_ai_converse(message, provider=None, model=None, reset=False, use_memory=True):
+async def _fake_ai_converse(
+    message, provider=None, model=None, reset=False, use_memory=True, project_id=None
+):
     return {"provider": provider or "groq", "model": "fake-model", "reply": "réponse factice"}
 
 
-async def _fake_ai_converse_error(message, provider=None, model=None, reset=False, use_memory=True):
+async def _fake_ai_converse_error(
+    message, provider=None, model=None, reset=False, use_memory=True, project_id=None
+):
     raise ProviderError("Fournisseur non configuré (test).")
 
 
@@ -57,7 +61,7 @@ def test_api_chat_returns_reply(monkeypatch):
 def test_api_chat_forwards_reset_flag(monkeypatch):
     captured = {}
 
-    async def spy(message, provider=None, model=None, reset=False, use_memory=True):
+    async def spy(message, provider=None, model=None, reset=False, use_memory=True, project_id=None):
         captured["reset"] = reset
         return {"provider": "groq", "model": "m", "reply": "ok"}
 
@@ -118,3 +122,53 @@ def test_api_chat_history_reflects_real_persisted_conversation():
         assert r5.json()["messages"] == []
     finally:
         gateway_module._PROVIDERS = original_providers
+
+
+def test_api_projects_list_empty_by_default(tmp_path, monkeypatch):
+    r = client.get("/api/projects")
+    assert r.status_code == 200
+    assert r.json() == {"projects": []}
+
+
+def test_api_chat_project_scoped_conversation_is_isolated():
+    from core import projects as projects_module
+    import ai.gateway as gateway_module
+
+    class _FakeProvider:
+        name = "fake"
+        description = "test"
+        default_model = "fake-model"
+
+        def is_configured(self):
+            return True
+
+        def setup_hint(self):
+            return ""
+
+        async def chat(self, messages, model=None):
+            return "réponse projet"
+
+    project_id = projects_module.create_project("Projet Web")
+    original_providers = dict(gateway_module._PROVIDERS)
+    gateway_module._PROVIDERS = {"fake": _FakeProvider()}
+    try:
+        r = client.post(
+            "/api/chat",
+            json={"message": "salut projet", "provider": "fake", "project_id": project_id},
+        )
+        assert r.status_code == 200
+
+        global_history = client.get("/api/chat/history").json()["messages"]
+        assert global_history == []
+
+        project_history = client.get(
+            "/api/chat/history", params={"project_id": project_id}
+        ).json()["messages"]
+        assert any(m["content"] == "salut projet" for m in project_history)
+    finally:
+        gateway_module._PROVIDERS = original_providers
+
+
+def test_api_chat_unknown_project_returns_400():
+    r = client.post("/api/chat", json={"message": "salut", "project_id": "id-inconnu"})
+    assert r.status_code == 400

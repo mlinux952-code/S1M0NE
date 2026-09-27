@@ -28,7 +28,7 @@ from ai.gateway import available_providers
 from ai.gateway import converse as ai_converse
 from ai.gateway import get_conversation_history, reset_conversation
 from connectors.engine import available_connectors, search_all
-from core import auth, notifications, permissions
+from core import auth, notifications, permissions, projects
 from core.config import settings
 from core.db import init_db
 from core.logging_setup import get_logger
@@ -106,6 +106,7 @@ class ChatRequest(BaseModel):
     provider: str | None = None
     model: str | None = None
     reset: bool = False
+    project_id: str | None = None  # NEXT_STEPS §B.4 : conversation scopée à un projet précis
 
 
 @asynccontextmanager
@@ -404,12 +405,12 @@ def create_app() -> FastAPI:
         return {"providers": available_providers()}
 
     @app.get("/api/chat/history")
-    def api_chat_history() -> dict[str, Any]:
-        return {"messages": [m.as_dict() for m in get_conversation_history()]}
+    def api_chat_history(project_id: str | None = None) -> dict[str, Any]:
+        return {"messages": [m.as_dict() for m in get_conversation_history(project_id=project_id)]}
 
     @app.post("/api/chat/reset")
-    def api_chat_reset() -> dict[str, Any]:
-        reset_conversation()
+    def api_chat_reset(project_id: str | None = None) -> dict[str, Any]:
+        reset_conversation(project_id=project_id)
         return {"ok": True}
 
     @app.post("/api/chat")
@@ -418,10 +419,20 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=400, detail="Message vide.")
         try:
             return await ai_converse(
-                body.message.strip(), provider=body.provider, model=body.model, reset=body.reset
+                body.message.strip(),
+                provider=body.provider,
+                model=body.model,
+                reset=body.reset,
+                project_id=body.project_id,
             )
         except ProviderError as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
+        except ValueError as exc:  # projet inconnu
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/projects")
+    def api_projects_list() -> dict[str, Any]:
+        return {"projects": projects.list_projects()}
 
     @app.get("/chat", response_class=HTMLResponse)
     def chat_page(request: Request) -> HTMLResponse:

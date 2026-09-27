@@ -30,53 +30,90 @@ logger = get_logger("s1mone.memory")
 
 VALID_LEVELS = ("temporary", "session", "project", "persistent")
 
+# Séparateur utilisé pour scoper une clé du niveau "project" à un id de projet précis (NEXT_STEPS
+# §B.4), sans migration de schéma : la clé stockée en base reste "<project_id>::<clé>", mais
+# l'appelant continue de manipuler une clé "propre" (ex: "chat_history") + un project_id séparé.
+_PROJECT_KEY_SEPARATOR = "::"
+
 
 def _check_level(level: str) -> None:
     if level not in VALID_LEVELS:
         raise ValueError(f"Niveau de mémoire invalide : '{level}'. Attendu : {VALID_LEVELS}.")
 
 
-def remember(level: str, key: str, value: Any) -> None:
-    """Enregistre `value` sous (`level`, `key`), en remplaçant toute valeur précédente."""
+def _storage_key(level: str, key: str, project_id: str | None) -> str:
+    """Traduit (level, key, project_id) en la clé réellement stockée en base.
+
+    Règle stricte et sans ambiguïté : `project_id` est OBLIGATOIRE pour le niveau "project"
+    (sinon deux projets différents écraseraient la même clé sans le savoir), et INTERDIT pour
+    tout autre niveau (project_id n'aurait aucun sens ailleurs — évite un faux sentiment de
+    scoping qui ne serait pas réellement appliqué)."""
+    if level == "project":
+        if not project_id:
+            raise ValueError(
+                "Le niveau 'project' exige un project_id (voir 's1mone project list' ou "
+                "'s1mone project create')."
+            )
+        return f"{project_id}{_PROJECT_KEY_SEPARATOR}{key}"
+    if project_id is not None:
+        raise ValueError("project_id n'est utilisable qu'avec le niveau 'project'.")
+    return key
+
+
+def remember(level: str, key: str, value: Any, project_id: str | None = None) -> None:
+    """Enregistre `value` sous (`level`, `key`), en remplaçant toute valeur précédente.
+
+    `project_id` est requis quand `level == "project"` (voir core/projects.py)."""
     _check_level(level)
+    storage_key = _storage_key(level, key, project_id)
     serialized = json.dumps(value, ensure_ascii=False)
     now = time.time()
     with get_connection() as conn:
-        conn.execute("DELETE FROM memory WHERE level = ? AND key = ?", (level, key))
+        conn.execute("DELETE FROM memory WHERE level = ? AND key = ?", (level, storage_key))
         conn.execute(
             "INSERT INTO memory (id, level, key, value, created_at) VALUES (?, ?, ?, ?, ?)",
-            (str(uuid.uuid4()), level, key, serialized, now),
+            (str(uuid.uuid4()), level, storage_key, serialized, now),
         )
 
 
-def recall(level: str, key: str, default: Any = None) -> Any:
+def recall(level: str, key: str, default: Any = None, project_id: str | None = None) -> Any:
     """Relit la valeur enregistrée sous (`level`, `key`), ou `default` si absente/corrompue."""
     _check_level(level)
+    storage_key = _storage_key(level, key, project_id)
     with get_connection() as conn:
         row = conn.execute(
-            "SELECT value FROM memory WHERE level = ? AND key = ?", (level, key)
+            "SELECT value FROM memory WHERE level = ? AND key = ?", (level, storage_key)
         ).fetchone()
     if row is None:
         return default
     try:
         return json.loads(row["value"])
     except (json.JSONDecodeError, TypeError):
-        logger.warning(f"Entrée mémoire corrompue ignorée ({level}/{key}).")
+        logger.warning(f"Entrée mémoire corrompue ignorée ({level}/{storage_key}).")
         return default
 
 
-def forget(level: str, key: str) -> None:
+def forget(level: str, key: str, project_id: str | None = None) -> None:
     """Supprime la valeur enregistrée sous (`level`, `key`). Ne lève jamais si elle est absente."""
     _check_level(level)
+    storage_key = _storage_key(level, key, project_id)
     with get_connection() as conn:
-        conn.execute("DELETE FROM memory WHERE level = ? AND key = ?", (level, key))
+        conn.execute("DELETE FROM memory WHERE level = ? AND key = ?", (level, storage_key))
 
 
-def list_memory(level: str | None = None) -> list[dict[str, Any]]:
+def list_memory(level: str | None = None, project_id: str | None = None) -> list[dict[str, Any]]:
     """Liste les entrées mémoire (métadonnées uniquement, sans la valeur complète) — pour le
-    debug/l'inspection (`s1mone memory list`)."""
+    debug/l'inspection (`s1mone memory list`).
+
+    Pour le niveau "project", chaque entrée expose en plus "project_id" et une "key" débarrassée
+    de son préfixe technique. `project_id` filtre sur un projet précis (implique level="project",
+    ou aucun niveau précisé)."""
     if level is not None:
         _check_level(level)
+    if project_id is not None and level not in (None, "project"):
+        raise ValueError(
+            "project_id n'est utilisable qu'avec le niveau 'project' (ou sans niveau précisé)."
+        )
     with get_connection() as conn:
         if level is None:
             rows = conn.execute(
@@ -86,4 +123,16 @@ def list_memory(level: str | None = None) -> list[dict[str, Any]]:
             rows = conn.execute(
                 "SELECT level, key, created_at FROM memory WHERE level = ? ORDER BY key", (level,)
             ).fetchall()
-    return [{"level": r["level"], "key": r["key"], "created_at": r["created_at"]} for r in rows]
+
+    entries: list[dict[str, Any]] = []
+    for r in rows:
+        entry: dict[str, Any] = {"level": r["level"], "key": r["key"], "created_at": r["created_at"]}
+        if entry["level"] == "project" and _PROJECT_KEY_SEPARATOR in entry["key"]:
+            pid, short_key = entry["key"].split(_PROJECT_KEY_SEPARATOR, 1)
+            entry["project_id"] = pid
+            entry["key"] = short_key
+        entries.append(entry)
+
+    if project_id is not None:
+        entries = [e for e in entries if e.get("project_id") == project_id]
+    return entries
