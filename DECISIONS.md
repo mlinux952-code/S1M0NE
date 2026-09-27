@@ -155,6 +155,27 @@ Phase 1+).
   système ; possibilité de pointer vers le disque secondaire NTFS pour les gros projets, avec
   vérification de montage avant toute écriture (jamais supposé monté).** `[PROPOSED]`
 
+## D12 — Mémoire (Phase 7)
+
+- **Décision : Memory Manager (`core/memory.py`) au-dessus de la table SQLite `memory` déjà créée
+  en Phase 1 (4 niveaux : temporary/session/project/persistent). API minimaliste
+  `remember/recall/forget/list_memory`, upsert applicatif (delete-then-insert) plutôt qu'une
+  contrainte SQL UNIQUE, pour rester compatible sans migration avec les bases déjà créées par des
+  installations antérieures à la Phase 7.** `[DECIDED]`
+- **Premier consommateur réel : la conversation IA (Phase 6).** Le niveau `persistent` stocke
+  l'historique de chat (`chat_history`, borné à 40 messages pour respecter les quotas gratuits en
+  tokens/minute) : la conversation continue d'une session à l'autre (CLI comme web) au lieu de
+  repartir de zéro à chaque redémarrage. `s1mone chat --reset` / `/reset` en interactif /
+  `POST /api/chat/reset` (web) permettent de repartir d'une page blanche à la demande.
+- **Auto-connaissance** : un message système décrivant S1M0NE (nom, architecture, machine cible)
+  est injecté au début de chaque conversation — corrige le comportement observé où l'assistant
+  ne savait pas ce qu'était S1M0NE (aucun contexte sur lui-même sans cela). Personnalisable en
+  écrasant la clé `ai_system_prompt` (niveau `persistent`) sans toucher au code.
+- Les niveaux `session` et `project` restent réservés (pas encore consommés) : `session` pour un
+  futur état propre à chaque onglet navigateur/terminal, `project` pour un futur lien avec la
+  table `projects`. Pas d'UI dédiée de navigation dans la mémoire pour l'instant (uniquement
+  consommée en interne par le chat) — pourrait arriver plus tard si le besoin se précise.
+
 ---
 
 ## Récapitulatif de la stack retenue pour la Phase 1 (fondation)

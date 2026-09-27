@@ -18,6 +18,18 @@ from ai.providers.ollama import OllamaProvider
 from ai.providers.openrouter import OpenRouterProvider
 
 
+@pytest.fixture(autouse=True)
+def isolated_db(tmp_path, monkeypatch):
+    """converse() (Phase 7) lit/écrit la mémoire persistante en SQLite : on isole la base pour
+    ne pas polluer les données réelles ni faire dépendre un test d'un précédent."""
+    monkeypatch.setenv("S1MONE_DATA_DIR", str(tmp_path))
+    from core.config import settings
+    from core.db import init_db
+
+    init_db(settings.db_path)
+    yield
+
+
 def _mock_client(handler) -> httpx.AsyncClient:
     return httpx.AsyncClient(transport=httpx.MockTransport(handler))
 
@@ -237,3 +249,80 @@ def test_gateway_chat_defaults_to_configured_provider(monkeypatch):
 
     outcome = asyncio.run(gateway_module.chat([ChatMessage(role="user", content="salut")]))
     assert outcome["provider"] == "fake"
+
+
+# --- converse() : mémoire persistante (Phase 7) -------------------------------------------------
+
+
+def test_converse_injects_system_prompt_describing_s1mone(monkeypatch):
+    fake = _FakeProvider()
+    monkeypatch.setattr(gateway_module, "_PROVIDERS", {"fake": fake})
+
+    asyncio.run(gateway_module.converse("salut", provider="fake"))
+
+    assert fake.received_messages[0].role == "system"
+    assert "S1M0NE" in fake.received_messages[0].content
+    assert fake.received_messages[-1] == ChatMessage(role="user", content="salut")
+
+
+def test_converse_remembers_across_calls(monkeypatch):
+    fake = _FakeProvider(reply="je me souviens")
+    monkeypatch.setattr(gateway_module, "_PROVIDERS", {"fake": fake})
+
+    asyncio.run(gateway_module.converse("je m'appelle Omrane", provider="fake"))
+    asyncio.run(gateway_module.converse("comment je m'appelle ?", provider="fake"))
+
+    # Le 2e appel doit recevoir tout l'historique : système + tour 1 (user+assistant) + tour 2 (user)
+    contents = [m.content for m in fake.received_messages]
+    assert "je m'appelle Omrane" in contents
+    assert "je me souviens" in contents
+    assert "comment je m'appelle ?" in contents
+
+
+def test_converse_reset_clears_previous_history(monkeypatch):
+    fake = _FakeProvider()
+    monkeypatch.setattr(gateway_module, "_PROVIDERS", {"fake": fake})
+
+    asyncio.run(gateway_module.converse("premier message", provider="fake"))
+    asyncio.run(gateway_module.converse("deuxième message", provider="fake", reset=True))
+
+    contents = [m.content for m in fake.received_messages]
+    assert "premier message" not in contents
+    assert "deuxième message" in contents
+
+
+def test_converse_no_memory_never_reads_or_writes_history(monkeypatch):
+    fake = _FakeProvider()
+    monkeypatch.setattr(gateway_module, "_PROVIDERS", {"fake": fake})
+
+    asyncio.run(gateway_module.converse("message oublié", provider="fake", use_memory=False))
+    asyncio.run(gateway_module.converse("message suivant", provider="fake", use_memory=False))
+
+    # Rien n'a été persisté : le 2e appel ne voit que le message système + son propre message.
+    assert len(fake.received_messages) == 2
+    assert gateway_module.get_conversation_history() == []
+
+
+def test_reset_conversation_and_get_conversation_history(monkeypatch):
+    fake = _FakeProvider(reply="ok")
+    monkeypatch.setattr(gateway_module, "_PROVIDERS", {"fake": fake})
+
+    asyncio.run(gateway_module.converse("bonjour", provider="fake"))
+    history = gateway_module.get_conversation_history()
+    assert [m.content for m in history] == ["bonjour", "ok"]
+
+    gateway_module.reset_conversation()
+    assert gateway_module.get_conversation_history() == []
+
+
+def test_converse_trims_history_beyond_max_length(monkeypatch):
+    fake = _FakeProvider(reply="ok")
+    monkeypatch.setattr(gateway_module, "_PROVIDERS", {"fake": fake})
+    monkeypatch.setattr(gateway_module, "MAX_HISTORY_MESSAGES", 4)
+
+    for i in range(5):
+        asyncio.run(gateway_module.converse(f"message {i}", provider="fake"))
+
+    history = gateway_module.get_conversation_history()
+    assert len(history) == 4  # borné, pas 10 (5 tours x 2 messages)
+    assert history[-1].content == "ok"

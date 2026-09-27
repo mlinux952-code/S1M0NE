@@ -1,7 +1,8 @@
-"""Tests du Web Gateway - endpoints de chat IA (Phase 6 - AI Gateway)."""
+"""Tests du Web Gateway - endpoints de chat IA (Phase 6 - AI Gateway, Phase 7 - Mémoire)."""
 
 from __future__ import annotations
 
+import pytest
 from fastapi.testclient import TestClient
 
 import web.app as web_app_module
@@ -11,11 +12,23 @@ from web.app import app
 client = TestClient(app)
 
 
-async def _fake_ai_chat(messages, provider=None, model=None):
+@pytest.fixture(autouse=True)
+def isolated_db(tmp_path, monkeypatch):
+    """/api/chat s'appuie sur ai.gateway.converse(), qui lit/écrit la mémoire persistante en
+    SQLite : on isole la base pour ne pas polluer les données réelles du projet."""
+    monkeypatch.setenv("S1MONE_DATA_DIR", str(tmp_path))
+    from core.config import settings
+    from core.db import init_db
+
+    init_db(settings.db_path)
+    yield
+
+
+async def _fake_ai_converse(message, provider=None, model=None, reset=False, use_memory=True):
     return {"provider": provider or "groq", "model": "fake-model", "reply": "réponse factice"}
 
 
-async def _fake_ai_chat_error(messages, provider=None, model=None):
+async def _fake_ai_converse_error(message, provider=None, model=None, reset=False, use_memory=True):
     raise ProviderError("Fournisseur non configuré (test).")
 
 
@@ -34,31 +47,24 @@ def test_api_chat_providers_lists_three_providers():
 
 
 def test_api_chat_returns_reply(monkeypatch):
-    monkeypatch.setattr(web_app_module, "ai_chat", _fake_ai_chat)
+    monkeypatch.setattr(web_app_module, "ai_converse", _fake_ai_converse)
     r = client.post("/api/chat", json={"message": "salut"})
     assert r.status_code == 200
     body = r.json()
     assert body["reply"] == "réponse factice"
 
 
-def test_api_chat_forwards_history(monkeypatch):
+def test_api_chat_forwards_reset_flag(monkeypatch):
     captured = {}
 
-    async def spy(messages, provider=None, model=None):
-        captured["messages"] = messages
+    async def spy(message, provider=None, model=None, reset=False, use_memory=True):
+        captured["reset"] = reset
         return {"provider": "groq", "model": "m", "reply": "ok"}
 
-    monkeypatch.setattr(web_app_module, "ai_chat", spy)
-    r = client.post(
-        "/api/chat",
-        json={
-            "message": "et toi ?",
-            "history": [{"role": "user", "content": "salut"}, {"role": "assistant", "content": "bonjour"}],
-        },
-    )
+    monkeypatch.setattr(web_app_module, "ai_converse", spy)
+    r = client.post("/api/chat", json={"message": "nouveau départ", "reset": True})
     assert r.status_code == 200
-    assert len(captured["messages"]) == 3
-    assert captured["messages"][-1].content == "et toi ?"
+    assert captured["reset"] is True
 
 
 def test_api_chat_empty_message_returns_400():
@@ -67,7 +73,48 @@ def test_api_chat_empty_message_returns_400():
 
 
 def test_api_chat_provider_error_returns_502_with_clear_detail(monkeypatch):
-    monkeypatch.setattr(web_app_module, "ai_chat", _fake_ai_chat_error)
+    monkeypatch.setattr(web_app_module, "ai_converse", _fake_ai_converse_error)
     r = client.post("/api/chat", json={"message": "salut"})
     assert r.status_code == 502
     assert "non configuré" in r.json()["detail"]
+
+
+def test_api_chat_history_reflects_real_persisted_conversation():
+    # Pas de mock de ai_converse ici : on vérifie l'intégration réelle avec ai.gateway (mémoire
+    # persistante), pas juste que la route existe. Seul le fournisseur IA lui-même est factice.
+    import ai.gateway as gateway_module
+
+    class _FakeProvider:
+        name = "fake"
+        description = "test"
+        default_model = "fake-model"
+
+        def is_configured(self):
+            return True
+
+        def setup_hint(self):
+            return ""
+
+        async def chat(self, messages, model=None):
+            return "réponse du fournisseur factice"
+
+    original_providers = dict(gateway_module._PROVIDERS)
+    gateway_module._PROVIDERS = {"fake": _FakeProvider()}
+    try:
+        r1 = client.get("/api/chat/history")
+        assert r1.json()["messages"] == []
+
+        r2 = client.post("/api/chat", json={"message": "salut", "provider": "fake"})
+        assert r2.status_code == 200
+
+        r3 = client.get("/api/chat/history")
+        contents = [m["content"] for m in r3.json()["messages"]]
+        assert "salut" in contents
+        assert "réponse du fournisseur factice" in contents
+
+        r4 = client.post("/api/chat/reset")
+        assert r4.status_code == 200
+        r5 = client.get("/api/chat/history")
+        assert r5.json()["messages"] == []
+    finally:
+        gateway_module._PROVIDERS = original_providers

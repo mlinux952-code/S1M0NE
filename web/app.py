@@ -23,9 +23,10 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
-from ai.base import ChatMessage, ProviderError
+from ai.base import ProviderError
 from ai.gateway import available_providers
-from ai.gateway import chat as ai_chat
+from ai.gateway import converse as ai_converse
+from ai.gateway import get_conversation_history, reset_conversation
 from connectors.engine import available_connectors, search_all
 from core.db import init_db
 from core.logging_setup import get_logger
@@ -76,23 +77,19 @@ class TaskSubmitRequest(BaseModel):
     parameters: dict[str, Any] = Field(default_factory=dict)
 
 
-class ChatHistoryItem(BaseModel):
-    role: str
-    content: str
-
-
 class ChatRequest(BaseModel):
     """Corps de requête pour POST /api/chat (Phase 6 - AI Gateway).
 
-    L'historique complet est renvoyé par le client à chaque appel : le serveur ne garde aucune
-    session en mémoire pour l'instant (persistance prévue Phase 7 - Mémoire), ce qui reste
-    volontairement simple et sans état côté serveur.
+    L'historique n'est plus renvoyé par le client à chaque appel (contrairement à la première
+    version de la Phase 6) : depuis la Phase 7 (Mémoire), le serveur est la seule source de
+    vérité, persistée en SQLite (voir ai/gateway.py). Le client peut relire l'historique via
+    GET /api/chat/history (ex. au chargement de la page) et le vider via POST /api/chat/reset.
     """
 
     message: str
-    history: list[ChatHistoryItem] = Field(default_factory=list)
     provider: str | None = None
     model: str | None = None
+    reset: bool = False
 
 
 @asynccontextmanager
@@ -239,14 +236,23 @@ def create_app() -> FastAPI:
     def api_chat_providers() -> dict[str, Any]:
         return {"providers": available_providers()}
 
+    @app.get("/api/chat/history")
+    def api_chat_history() -> dict[str, Any]:
+        return {"messages": [m.as_dict() for m in get_conversation_history()]}
+
+    @app.post("/api/chat/reset")
+    def api_chat_reset() -> dict[str, Any]:
+        reset_conversation()
+        return {"ok": True}
+
     @app.post("/api/chat")
     async def api_chat(body: ChatRequest) -> dict[str, Any]:
         if not body.message.strip():
             raise HTTPException(status_code=400, detail="Message vide.")
-        messages = [ChatMessage(role=h.role, content=h.content) for h in body.history]
-        messages.append(ChatMessage(role="user", content=body.message.strip()))
         try:
-            return await ai_chat(messages, provider=body.provider, model=body.model)
+            return await ai_converse(
+                body.message.strip(), provider=body.provider, model=body.model, reset=body.reset
+            )
         except ProviderError as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
 

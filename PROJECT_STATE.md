@@ -25,14 +25,23 @@
   réelle.** Commande `s1mone search <terme> [--sources ...] [--limit N] [--list-sources]` en CLI,
   page `/search` (formulaire htmx) + `/api/search` + `/api/search/sources` côté web. Deux bugs
   réels détectés et corrigés après retour utilisateur (voir Historique ci-dessous).
-- **PHASE 6 — AI GATEWAY : terminée et testée dans le sandbox. Pas encore validée sur la machine
-  réelle** (à faire par l'utilisateur après `git pull && ./install.sh`). Assistant IA
+- **PHASE 6 — AI GATEWAY : terminée, testée et validée sur la machine réelle.** Assistant IA
   conversationnel gratuit, sans carte bancaire : `s1mone chat` (CLI, mode message unique ou
   interactif) + page `/chat` (web). 3 fournisseurs interchangeables sans toucher au code
   (config.toml `[ai] default_provider`) : Groq (recommandé), OpenRouter, Ollama (local,
   expérimental). Voir DECISIONS.md §D7 (révisé : LiteLLM abandonné au profit d'adaptateurs httpx
-  maison, plus légers).
-- **126/126 tests automatisés passent** dans le sandbox.
+  maison, plus légers). Bug réel détecté et corrigé après retour utilisateur : le modèle Groq par
+  défaut (`llama-3.3-70b-versatile`) était passé en accès Enterprise chez Groq entre-temps →
+  remplacé par `openai/gpt-oss-20b`.
+- **PHASE 7 — MÉMOIRE : terminée et testée dans le sandbox (avec le vrai binaire installé, via
+  processus séparés + faux serveur Ollama pour prouver la persistance réelle inter-processus).
+  Pas encore validée par l'utilisateur sur sa machine réelle.** Memory Manager (`core/memory.py`)
+  au-dessus de la table SQLite `memory` (Phase 1). Premier usage concret : la conversation IA
+  (Phase 6) persiste maintenant entre deux lancements de `s1mone chat` ou deux visites de
+  `/chat`, au lieu de repartir de zéro — plus un message système d'auto-présentation de S1M0NE
+  (corrige le cas réel observé : l'assistant ne savait pas ce qu'était S1M0NE). `--reset` / `/reset`
+  / bouton "Nouvelle conversation" pour repartir à zéro. Voir DECISIONS.md §D12.
+- **144/144 tests automatisés passent** dans le sandbox.
 
 ## Workflow de livraison (actuel, définitif)
 
@@ -99,13 +108,14 @@ Tous les connecteurs passent par le Cache Manager (Phase 4, TTL configurable dan
 
 ## Prochaine étape
 
-Phase 6 (IA) codée et testée en sandbox, en attente de validation sur la machine réelle de
-l'utilisateur (`git pull && ./install.sh`, puis `s1mone chat --list-providers`, puis configurer
-au moins une clé gratuite dans `.env` pour tester une vraie conversation).
+Phase 7 (Mémoire) codée et testée en sandbox, en attente de validation sur la machine réelle de
+l'utilisateur (`git pull && ./install.sh`, puis vérifier que `s1mone chat` se souvient bien d'un
+message à l'autre, y compris après avoir fermé et rouvert le terminal).
 
-Candidats du plan initial restants après validation de la Phase 6 :
-- **Phase 7 — Mémoire** : système de mémoire/contexte persistant (actuellement un lien désactivé
-  dans la nav web, "Arrive en Phase 7") — permettrait aussi de garder l'historique du chat IA
-  entre deux sessions, ce qui n'est pas encore le cas (historique en mémoire process uniquement).
+Candidats du plan initial restants après validation de la Phase 7 :
 - Améliorations transverses possibles : affichage terminal de `s1mone search` (tableau large),
-  pagination, tri par pertinence/stars.
+  pagination, tri par pertinence/stars ; page dédiée d'exploration de la mémoire (actuellement
+  seulement consommée en interne par le chat, pas de vue "s1mone memory list").
+- Étapes plus lointaines du méga-prompt non encore abordées : vrais plugins tiers (Pluggy,
+  Phase 8), sécurité avancée (permissions READ/WRITE/EXECUTE/ADMIN + confirmation obligatoire
+  pour commandes destructrices, Phase 9).

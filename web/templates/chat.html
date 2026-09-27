@@ -4,7 +4,7 @@
 <h1>Chat IA</h1>
 <p class="hint">Assistant IA (Phase 6). Fournisseurs disponibles :
     {% for p in providers %}<code title="{{ p.description }}">{{ p.name }}</code>{% if not p.configured %} <span class="muted">(à configurer)</span>{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}.
-    L'historique n'est gardé que dans cette page (pas de mémoire persistante — arrive en Phase 7).
+    La conversation est mémorisée entre deux visites (Phase 7) : recharge la page, elle reste là.
 </p>
 
 <div class="card" x-data="{
@@ -13,6 +13,13 @@
         provider: '{{ providers[0].name if providers else '' }}',
         messages: [],
         draft: '',
+        async loadHistory() {
+            try {
+                const res = await fetch('/api/chat/history');
+                const data = await res.json();
+                this.messages = data.messages || [];
+            } catch (err) { /* pas grave : on démarre juste avec une page blanche */ }
+        },
         async send() {
             const text = this.draft.trim();
             if (!text || this.sending) return;
@@ -21,11 +28,10 @@
             this.draft = '';
             this.sending = true;
             try {
-                const history = this.messages.slice(0, -1);
                 const res = await fetch('/api/chat', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({message: text, history: history, provider: this.provider})
+                    body: JSON.stringify({message: text, provider: this.provider})
                 });
                 const data = await res.json();
                 if (!res.ok) { throw new Error(data.detail || 'Erreur inconnue'); }
@@ -35,8 +41,13 @@
             } finally {
                 this.sending = false;
             }
+        },
+        async newConversation() {
+            await fetch('/api/chat/reset', {method: 'POST'});
+            this.messages = [];
+            this.error = '';
         }
-    }">
+    }" x-init="loadHistory()">
     <label>Fournisseur :
         <select x-model="provider">
             {% for p in providers %}
@@ -44,6 +55,7 @@
             {% endfor %}
         </select>
     </label>
+    <button type="button" @click="newConversation()" style="margin-left:0.5rem;">Nouvelle conversation</button>
 
     <div style="margin-top:1rem; margin-bottom:1rem;">
         <template x-for="(m, i) in messages" :key="i">

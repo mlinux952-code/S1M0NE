@@ -21,9 +21,10 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from ai.base import ChatMessage, ProviderError
+from ai.base import ProviderError
 from ai.gateway import available_providers
-from ai.gateway import chat as ai_chat
+from ai.gateway import converse as ai_converse
+from ai.gateway import reset_conversation
 from connectors.engine import available_connectors, search_all
 from core.config import settings
 from core.timeutil import format_timestamp
@@ -50,7 +51,7 @@ task_app = typer.Typer(help="Gestion des tâches (Task Manager).")
 app.add_typer(task_app, name="task")
 
 
-_COMMANDS_NEEDING_DB = {"status", "task", "search"}
+_COMMANDS_NEEDING_DB = {"status", "task", "search", "chat"}
 
 
 @app.callback()
@@ -231,9 +232,18 @@ def chat(
     list_providers: bool = typer.Option(
         False, "--list-providers", help="Affiche les fournisseurs IA disponibles et leur statut."
     ),
+    reset: bool = typer.Option(
+        False, "--reset", help="Efface la conversation mémorisée avant d'envoyer ce message."
+    ),
+    no_memory: bool = typer.Option(
+        False,
+        "--no-memory",
+        help="Appel ponctuel : ne lit ni n'écrit la conversation persistante (Phase 7).",
+    ),
 ) -> None:
-    """Discute avec un assistant IA (Phase 6). Gratuit par défaut (Groq), voir README.md pour
-    changer de fournisseur (OpenRouter, Ollama en local) ou en configurer un nouveau."""
+    """Discute avec un assistant IA (Phase 6), qui se souvient de la conversation d'une session à
+    l'autre (Phase 7 - Mémoire). Gratuit par défaut (Groq), voir README.md pour changer de
+    fournisseur (OpenRouter, Ollama en local)."""
     if list_providers:
         table = Table(title="S1M0NE — fournisseurs IA disponibles")
         table.add_column("Fournisseur")
@@ -250,9 +260,16 @@ def chat(
         return
 
     if message and message.strip():
-        history = [ChatMessage(role="user", content=message.strip())]
         try:
-            outcome = asyncio.run(ai_chat(history, provider=provider, model=model))
+            outcome = asyncio.run(
+                ai_converse(
+                    message.strip(),
+                    provider=provider,
+                    model=model,
+                    reset=reset,
+                    use_memory=not no_memory,
+                )
+            )
         except ProviderError as exc:
             console.print(f"[bold red]Erreur IA :[/bold red] {exc}")
             raise typer.Exit(code=1) from exc
@@ -260,31 +277,39 @@ def chat(
         console.print(outcome["reply"])
         return
 
-    # Pas de message : conversation interactive (historique gardé en mémoire pour cette session
-    # uniquement — la persistance entre sessions est prévue pour la Phase 7, Mémoire).
+    # Pas de message : conversation interactive. La mémoire (Phase 7) est persistée en base entre
+    # deux lancements : fermer puis rouvrir "s1mone chat" reprend la conversation là où elle en
+    # était, sauf --reset ou '/reset' en cours de session.
     console.print(
-        "[bold]S1M0NE — chat interactif[/bold] (tape 'exit' ou Ctrl+C pour quitter)"
+        "[bold]S1M0NE — chat interactif[/bold] (mémoire persistante activée — "
+        "tape 'exit' pour quitter, '/reset' pour repartir de zéro)"
     )
-    history = []
+    if reset:
+        reset_conversation()
+        console.print("[grey58]Conversation précédente effacée.[/grey58]")
     while True:
         try:
             user_input = console.input("[bold cyan]toi >[/bold cyan] ")
         except (EOFError, KeyboardInterrupt):
             console.print("\n[grey58]Fin de la conversation.[/grey58]")
             break
-        if not user_input.strip():
+        text = user_input.strip()
+        if not text:
             continue
-        if user_input.strip().lower() in {"exit", "quit"}:
+        if text.lower() in {"exit", "quit"}:
             console.print("[grey58]Fin de la conversation.[/grey58]")
             break
-        history.append(ChatMessage(role="user", content=user_input.strip()))
+        if text.lower() == "/reset":
+            reset_conversation()
+            console.print("[grey58]Conversation effacée. On repart de zéro.[/grey58]")
+            continue
         try:
-            outcome = asyncio.run(ai_chat(history, provider=provider, model=model))
+            outcome = asyncio.run(
+                ai_converse(text, provider=provider, model=model, use_memory=not no_memory)
+            )
         except ProviderError as exc:
             console.print(f"[bold red]Erreur IA :[/bold red] {exc}")
-            history.pop()  # on ne garde pas un échange raté dans l'historique
             continue
-        history.append(ChatMessage(role="assistant", content=outcome["reply"]))
         console.print(f"[bold magenta]s1mone >[/bold magenta] {outcome['reply']}")
 
 

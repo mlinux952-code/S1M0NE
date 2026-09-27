@@ -20,10 +20,13 @@ extensible vers l'IA — conçue en priorité pour tourner confortablement sur u
 - **Phase 5 — Connecteurs de recherche (npm, Hugging Face, GitHub, GitLab, Codeberg, PyPI,
   SourceForge) : terminée, testée et validée sur la machine réelle**, avec intégration complète
   CLI (`s1mone search`) et web (`/search`).
-- **Phase 6 — AI Gateway (assistant IA conversationnel, gratuit et sans carte bancaire) : terminée
-  et testée en sandbox, en attente de validation sur la machine réelle.** `s1mone chat` (CLI) et
-  page `/chat` (web), 3 fournisseurs interchangeables : Groq (recommandé), OpenRouter, Ollama
-  (local, expérimental).
+- **Phase 6 — AI Gateway (assistant IA conversationnel, gratuit et sans carte bancaire) : terminée,
+  testée et validée sur la machine réelle.** `s1mone chat` (CLI) et page `/chat` (web), 3
+  fournisseurs interchangeables : Groq (recommandé), OpenRouter, Ollama (local, expérimental).
+- **Phase 7 — Mémoire : terminée et testée en sandbox, en attente de validation sur la machine
+  réelle.** La conversation IA persiste maintenant d'une session à l'autre (`s1mone chat`
+  continue là où tu l'as laissé, même après avoir fermé le terminal), et l'assistant sait ce
+  qu'est S1M0NE.
 
 Le détail complet, phase par phase, est dans [`PROJECT_STATE.md`](./PROJECT_STATE.md).
 
@@ -70,9 +73,12 @@ s1mone search react                             # recherche dans les 7 connecteu
 s1mone search flask --sources npm,pypi --limit 3
 s1mone search --list-sources                    # liste les sources disponibles
 
-s1mone chat "explique-moi ce qu'est une API REST" # une question, une réponse
-s1mone chat                                     # conversation interactive (tape 'exit' pour sortir)
+s1mone chat "explique-moi ce qu'est une API REST" # une question, une réponse (mémorisée)
+s1mone chat                                     # conversation interactive (tape 'exit' pour sortir,
+                                                 # '/reset' pour repartir de zéro en cours de route)
 s1mone chat --list-providers                    # voir les fournisseurs dispo et leur statut
+s1mone chat --reset "on recommence"             # efface la conversation précédente avant d'envoyer
+s1mone chat --no-memory "question ponctuelle"   # ne lit ni n'écrit la conversation mémorisée
 
 s1mone web                                      # dashboard + terminal web + recherche + chat IA
                                                  # (le worker de tâches tourne dans ce même
@@ -92,6 +98,14 @@ ajouter toi-même dans ton fichier `.env` (jamais commité).
 
 Le fournisseur par défaut se change dans `config/config.toml`, section `[ai] default_provider`,
 ou ponctuellement avec `s1mone chat --provider openrouter "..."`.
+
+## Mémoire (Phase 7)
+
+La conversation avec l'assistant IA est mémorisée en base SQLite locale (table `memory`) : elle
+continue d'une session à l'autre au lieu de repartir de zéro à chaque fois, en CLI comme en web.
+L'assistant sait aussi ce qu'est S1M0NE (message système d'auto-présentation injecté à chaque
+conversation). Pour repartir d'une page blanche : `s1mone chat --reset`, `/reset` en conversation
+interactive, ou le bouton "Nouvelle conversation" sur `/chat`.
 
 ## Recherche multi-sources (Phase 5)
 
