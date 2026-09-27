@@ -25,7 +25,7 @@ dev = ["pytest>=8.0"]
 s1mone = "cli.main:main"
 
 [tool.setuptools]
-packages = ["core", "system", "cli", "web", "tasks"]
+packages = ["core", "system", "cli", "web", "tasks", "connectors"]
 
 
 [tool.pytest.ini_options]
