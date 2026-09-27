@@ -10,7 +10,6 @@ vérifient de façon isolée."""
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 
 import pytest
@@ -29,16 +28,18 @@ from core.config import settings
 
 
 @pytest.fixture(autouse=True)
-def _clean_installed_apps():
-    """Nettoie le dossier confiné + l'historique mémoire avant et après chaque test."""
-    from core import memory
+def isolated_db(tmp_path, monkeypatch):
+    """Isole la base SQLite ET le dossier fs_root/installed_apps dans un répertoire temporaire —
+    même pattern que tests/test_memory.py et tests/test_web_notes.py. Bug réel détecté avant ce
+    correctif (voir DECISIONS.md D23) : sans cette isolation, ces tests dépendaient de l'ordre
+    d'exécution (échec avec pytest-randomly sur un clone frais où data/s1mone.db n'existe pas
+    encore) car ils réutilisaient la vraie base du projet."""
+    monkeypatch.setenv("S1MONE_DATA_DIR", str(tmp_path))
+    from core.config import settings
+    from core.db import init_db
 
-    installed_root = settings.fs_root / "installed_apps"
-    shutil.rmtree(installed_root, ignore_errors=True)
-    memory.remember("persistent", "installed_apps_log", [])
+    init_db(settings.db_path)
     yield
-    shutil.rmtree(installed_root, ignore_errors=True)
-    memory.remember("persistent", "installed_apps_log", [])
 
 
 class _FakeCompletedProcess:

@@ -2,28 +2,26 @@
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 
 import pytest
 from fastapi.testclient import TestClient
 
-from core.config import settings
 from web.app import app
 
 client = TestClient(app)
 
 
 @pytest.fixture(autouse=True)
-def _clean_installed_apps():
-    from core import memory
+def isolated_db(tmp_path, monkeypatch):
+    """Isole la base SQLite ET fs_root/installed_apps dans un répertoire temporaire — même
+    pattern que tests/test_web_notes.py (bug d'ordre d'exécution réel détecté et corrigé, D23)."""
+    monkeypatch.setenv("S1MONE_DATA_DIR", str(tmp_path))
+    from core.config import settings
+    from core.db import init_db
 
-    installed_root = settings.fs_root / "installed_apps"
-    shutil.rmtree(installed_root, ignore_errors=True)
-    memory.remember("persistent", "installed_apps_log", [])
+    init_db(settings.db_path)
     yield
-    shutil.rmtree(installed_root, ignore_errors=True)
-    memory.remember("persistent", "installed_apps_log", [])
 
 
 class _FakeCompletedProcess:
