@@ -28,12 +28,15 @@ extensible vers l'IA — conçue en priorité pour tourner confortablement sur u
   après avoir fermé le terminal), et l'assistant sait ce qu'est S1M0NE. Complétée par
   `s1mone memory list/show/forget` (transparence totale sur ce qui est mémorisé) et un tableau
   `s1mone search` plus lisible (une ligne par résultat).
-- **Phase 9 — Sécurité (permissions + commandes système réelles) : terminée et testée en
-  sandbox, en attente de validation sur la machine réelle.** `s1mone exec` (CLI) et le terminal
-  web (`/terminal`) peuvent désormais exécuter de vraies commandes système, mais uniquement une
-  liste blanche stricte, classée par niveau de permission (READ/WRITE/EXECUTE/ADMIN), bornée au
-  dossier de données de S1M0NE, avec confirmation explicite obligatoire pour toute commande
-  destructrice (rm, rmdir).
+- **Phase 9 — Sécurité (permissions + commandes système réelles) : terminée, testée et validée
+  sur la machine réelle.** `s1mone exec` (CLI) et le terminal web (`/terminal`) peuvent exécuter
+  de vraies commandes système, mais uniquement une liste blanche stricte, classée par niveau de
+  permission (READ/WRITE/EXECUTE/ADMIN), bornée au dossier de données de S1M0NE, avec
+  confirmation explicite obligatoire pour toute commande destructrice (rm, rmdir).
+- **Phase 8 — Plugins (Pluggy) : terminée et testée en sandbox, en attente de validation sur la
+  machine réelle.** Dépose un fichier `.py` dans `plugins_local/` pour ajouter un connecteur de
+  recherche ou un type de tâche à S1M0NE, sans toucher au code central. Deux exemples fournis et
+  fonctionnels dans `plugins_local/examples/`.
 
 Le détail complet, phase par phase, est dans [`PROJECT_STATE.md`](./PROJECT_STATE.md).
 
@@ -150,6 +153,24 @@ s1mone exec run "pwd"
 s1mone exec run "mkdir sous_dossier"
 s1mone exec run "rm fichier.txt"    # demande confirmation, sauf --yes/-y
 ```
+
+## Plugins (Phase 8)
+
+S1M0NE s'étend sans jamais toucher à son code central : dépose un fichier `.py` dans
+`plugins_local/` pour ajouter un connecteur de recherche ou un type de tâche, basé sur
+[Pluggy](https://pluggy.readthedocs.io/) (le même moteur de plugins que pytest).
+
+```bash
+cp plugins_local/examples/hello_connector.py plugins_local/   # active l'exemple
+s1mone plugin list                                            # vérifie qu'il est bien chargé
+s1mone search test --sources hello                             # l'utilise
+```
+
+Voir [`plugins_local/README.md`](./plugins_local/README.md) pour écrire ton propre plugin (deux
+hooks disponibles : `s1mone_connectors`, `s1mone_task_handlers`) et la frontière de confiance
+associée (un plugin est du code Python exécuté avec les mêmes droits que S1M0NE — n'installe que
+ce à quoi tu fais confiance). Un connecteur ou type de tâche déjà intégré ne peut jamais être
+redéfini par un plugin.
 
 ## Recherche multi-sources (Phase 5)
 

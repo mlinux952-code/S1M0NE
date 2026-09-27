@@ -47,13 +47,21 @@
   - Tableau `s1mone search` réécrit en une seule ligne par résultat (`overflow="ellipsis"` +
     nettoyage des descriptions contenant des retours à la ligne bruts) : corrige le rough edge
     "tableau trop large / difficile à lire" identifié précédemment.
-- **PHASE 9 — SÉCURITÉ : terminée et testée en sandbox, en attente de validation sur la machine
-  réelle.** Voir la section dédiée plus bas pour le détail complet. En résumé : `s1mone exec` +
-  `/terminal` (web) peuvent exécuter de vraies commandes système, en liste blanche stricte,
-  classées par permission READ/WRITE/EXECUTE/ADMIN, bornées au dossier de données, avec
-  confirmation obligatoire pour les commandes destructrices (rm, rmdir). Voir DECISIONS.md §D10
-  (mis à jour : DECIDED).
-- **186/186 tests automatisés passent** dans le sandbox (152 avant Phase 9 + 34 nouveaux).
+- **PHASE 9 — SÉCURITÉ : terminée, testée et validée sur la machine réelle.** Voir la section
+  dédiée plus bas pour le détail complet. En résumé : `s1mone exec` + `/terminal` (web) peuvent
+  exécuter de vraies commandes système, en liste blanche stricte, classées par permission
+  READ/WRITE/EXECUTE/ADMIN, bornées au dossier de données, avec confirmation obligatoire pour
+  les commandes destructrices (rm, rmdir). Voir DECISIONS.md §D10 (DECIDED). Validé sur la
+  machine réelle : `s1mone exec list`/`run` fonctionnent, `rm` sur un dossier a été correctement
+  refusé par le vrai binaire système (`est un dossier` — comportement Unix standard, `rmdir`
+  existe pour ce cas).
+- **PHASE 8 — PLUGINS (Pluggy) : terminée et testée en sandbox, en attente de validation sur la
+  machine réelle.** Voir la section dédiée plus bas. En résumé : `plugins/hookspecs.py` +
+  `plugins/manager.py` (Pluggy, dépendance directe désormais) permettent d'ajouter des
+  connecteurs de recherche et des types de tâches sans toucher au code central, via un fichier
+  `.py` déposé dans `plugins_local/` ou un paquet pip avec entry point `s1mone`.
+- **199/199 tests automatisés passent** dans le sandbox (152 avant Phase 9 + 34 Phase 9 + 13
+  Phase 8).
 
 ## Workflow de livraison (actuel, définitif)
 
@@ -158,15 +166,51 @@ handlers Python fixes existaient : `sleep`, `system_snapshot`), mais uniquement 
   (409 puis `confirm=true`).
 - **186/186 tests automatisés passent** dans le sandbox (152 + 34).
 
+## PHASE 8 — PLUGINS (Pluggy)
+
+**Terminée et testée en sandbox (199/199 tests), en attente de validation sur la machine réelle
+de l'utilisateur.**
+
+Referme la question laissée ouverte par la décision D9 (Phase 5) : "classe abstraite + découverte
+dynamique, sans framework de plugin externe pour l'instant (Pluggy réévalué en Phase 8)". C'est
+fait :
+
+- `plugins/hookspecs.py` : deux points d'extension officiels, `s1mone_connectors()` (ajoute des
+  instances `connectors.base.Connector` au moteur de recherche) et `s1mone_task_handlers()`
+  (ajoute des types de tâches au Task Manager). Basé sur [Pluggy](https://pluggy.readthedocs.io/)
+  (même moteur que pytest), maintenant une dépendance directe de S1M0NE (`pyproject.toml`).
+- `plugins/manager.py` : découverte en deux temps — (1) paquets pip installés exposant un entry
+  point du groupe `s1mone` (`pm.load_setuptools_entrypoints`), (2) fichiers `.py` déposés
+  directement dans `plugins_local/` (configurable, `config.toml [plugins] dir` /
+  `$S1MONE_PLUGINS_DIR`), chargés un par un via `importlib`. Un plugin cassé (erreur d'import ou
+  d'exécution) est capturé et loggué, jamais fatal pour S1M0NE (même philosophie de dégradation
+  gracieuse que les connecteurs de recherche, Phase 5).
+- Intégration non invasive : `connectors/engine.py` (`_effective_connectors()`) et
+  `tasks/registry.py` (`available_types()`/`get_handler()`) fusionnent les contributions des
+  plugins avec les composants intégrés — **le composant intégré gagne toujours en cas de
+  conflit de nom** (prévisibilité, avertissement loggué), aucune ligne de `core/` modifiée.
+- CLI : `s1mone plugin list` (nom, origine "fichier local"/"paquet installé", hooks
+  implémentés, + liste finale des connecteurs/types de tâches disponibles). Web : `GET
+  /api/plugins` (même information).
+- Deux exemples fonctionnels et documentés dans `plugins_local/examples/`
+  (`hello_connector.py`, `hello_task.py`) + `plugins_local/README.md` expliquant comment écrire
+  et activer/désactiver un plugin, et la **frontière de confiance explicite** : un plugin est du
+  code Python arbitraire, exécuté avec les mêmes droits que S1M0NE — volontairement HORS du
+  périmètre de la liste blanche de commandes système de la Phase 9 (qui protège contre
+  l'exécution *automatique*, pas contre du code que l'utilisateur choisit lui-même d'installer).
+- 13 nouveaux tests (`test_plugins.py`, `test_cli_plugin.py`, `test_web_plugins.py`) : chargement
+  local, conflit avec un composant intégré (le plugin est ignoré), plugin cassé n'empêche pas le
+  chargement des autres, désactivation par préfixe `_`, intégration CLI/web bout en bout.
+
 ## Prochaine étape
 
-Validation de la Phase 9 sur la machine réelle de l'utilisateur (`git pull && ./install.sh`,
-puis `s1mone exec list`, `s1mone exec run "ls ."`, tester une commande destructrice pour
-vérifier la confirmation, et la page `/terminal` en web).
+Validation des Phases 8 et 9 sur la machine réelle de l'utilisateur (`git pull && ./install.sh`,
+puis pour la Phase 8 : `cp plugins_local/examples/hello_connector.py plugins_local/`,
+`s1mone plugin list`, `s1mone search test --sources hello`).
 
-Candidats du plan initial restants après validation de la Phase 9 :
-- Phase 8 : vrais plugins tiers (Pluggy), extensibilité sans toucher au code central — permettrait
-  d'étendre le catalogue de commandes système ou d'ajouter de nouveaux connecteurs de recherche
-  sans modifier `core/`.
-- Améliorations transverses possibles : page web dédiée à la mémoire (actuellement CLI
-  uniquement) ; pagination/tri des résultats de recherche.
+C'était la dernière grande phase du plan initial (méga-prompt). Candidats restants, tous de
+second ordre (polish / nice-to-have, pas de nouvelle capacité structurante) :
+- Page web dédiée à la mémoire (actuellement CLI uniquement, `s1mone memory ...`).
+- Pagination/tri des résultats de recherche (par pertinence, étoiles GitHub, etc.).
+- Vrai paquet pip d'exemple pour un plugin distribué (entry point `s1mone`), au-delà des fichiers
+  locaux déjà démontrés.

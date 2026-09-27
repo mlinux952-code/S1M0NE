@@ -189,6 +189,30 @@ Phase 1+).
   table `projects`. Pas d'UI dédiée de navigation dans la mémoire pour l'instant (uniquement
   consommée en interne par le chat) — pourrait arriver plus tard si le besoin se précise.
 
+## D13 — Plugins tiers (Phase 8)
+
+- **Décision : Pluggy comme moteur de plugins (même bibliothèque que pytest), avec deux points
+  d'extension officiels (`s1mone_connectors`, `s1mone_task_handlers`) et deux canaux de
+  découverte : fichiers `.py` déposés dans `plugins_local/` (usage personnel, zéro friction) et
+  paquets pip avec entry point `s1mone` (distribution réelle).** `[DECIDED]` Referme la question
+  ouverte par D9 ("Pluggy réévalué en Phase 8").
+- **Frontière de confiance explicite, différente de celle de la Phase 9** : la liste blanche de
+  commandes système (D10) protège contre l'exécution *automatique* de commandes par S1M0NE
+  lui-même ; un plugin, lui, est du code Python que l'utilisateur choisit *explicitement*
+  d'installer (en déposant un fichier ou en faisant `pip install`) — il tourne avec les mêmes
+  droits que S1M0NE, sans sandbox supplémentaire. C'est la même frontière que pour n'importe quel
+  écosystème de plugins (extensions de navigateur, paquets npm, plugins pytest...) : la
+  protection est l'acte d'installation explicite, pas un bac à sable technique. Documenté dans
+  `plugins_local/README.md` pour que ce soit clair pour l'utilisateur.
+- **Priorité aux composants intégrés en cas de conflit de nom** : un plugin ne peut jamais
+  redéfinir un connecteur ou un type de tâche déjà fourni par S1M0NE (prévisibilité avant
+  extensibilité), avec avertissement loggué plutôt qu'échec silencieux.
+- Limite connue acceptée : si plusieurs plugins implémentent le même hook, une exception dans
+  l'un peut empêcher les suivants de répondre pour cet appel précis (le cœur de S1M0NE n'est
+  jamais affecté, seule la contribution des plugins pour ce tour l'est). Acceptable pour un outil
+  personnel mono-utilisateur ; à revoir avec un appel hook par plugin isolé si le besoin se
+  précise avec plusieurs plugins simultanés en usage réel.
+
 ---
 
 ## Récapitulatif de la stack retenue pour la Phase 1 (fondation)

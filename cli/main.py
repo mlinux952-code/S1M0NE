@@ -31,6 +31,7 @@ from core import permissions
 from core.config import settings
 from core.shell_runner import run_command as run_shell_command
 from core.timeutil import format_timestamp
+from plugins.manager import list_plugins
 from system.healthcheck import run_all_checks
 from system.monitor import get_platform_info, get_snapshot, resource_level
 from tasks.manager import (
@@ -58,6 +59,9 @@ app.add_typer(memory_app, name="memory")
 
 exec_app = typer.Typer(help="Commandes système réelles, en liste blanche (Phase 9 - Sécurité).")
 app.add_typer(exec_app, name="exec")
+
+plugin_app = typer.Typer(help="Plugins tiers (Phase 8) : connecteurs et types de tâches additionnels.")
+app.add_typer(plugin_app, name="plugin")
 
 
 _COMMANDS_NEEDING_DB = {"status", "task", "search", "chat", "memory"}
@@ -567,6 +571,28 @@ def exec_run(
         raise typer.Exit(code=1)
     if result["returncode"] not in (0, None):
         raise typer.Exit(code=result["returncode"])
+
+
+@plugin_app.command("list")
+def plugin_list() -> None:
+    """Liste les plugins chargés (Phase 8) : fichiers déposés dans plugins_local/ + paquets pip
+    installés exposant un entry point 's1mone'. Voir plugins_local/README.md pour en écrire un."""
+    plugins = list_plugins()
+    table = Table(title="S1M0NE — plugins chargés")
+    table.add_column("Nom")
+    table.add_column("Origine")
+    table.add_column("Hooks implémentés")
+    for p in plugins:
+        table.add_row(p["name"], p["source"], ", ".join(p["hooks"]) or "—")
+    console.print(table)
+    if not plugins:
+        console.print(
+            f"[grey58]Aucun plugin chargé. Dossier surveillé : {settings.plugins_dir}[/grey58]"
+        )
+    console.print(
+        f"Connecteurs disponibles (intégrés + plugins) : {[c['name'] for c in available_connectors()]}"
+    )
+    console.print(f"Types de tâches disponibles (intégrés + plugins) : {available_types()}")
 
 
 def main() -> None:

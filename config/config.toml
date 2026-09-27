@@ -55,6 +55,11 @@ default_provider = "groq"
 # [ai.ollama]
 # model = "qwen2.5:0.5b"
 
+[plugins]
+# Dossier surveillé pour les plugins locaux (Phase 8) : tout fichier .py posé ici est chargé au
+# démarrage (préfixer par '_' pour désactiver sans supprimer). Voir plugins_local/README.md.
+dir = "plugins_local"
+
 [security]
 require_confirmation_for_dangerous_commands = true
 

@@ -34,6 +34,7 @@ from core.db import init_db
 from core.logging_setup import get_logger
 from core.shell_runner import run_command as run_shell_command
 from core.timeutil import format_timestamp
+from plugins.manager import list_plugins
 from system.healthcheck import run_all_checks
 from system.monitor import get_platform_info, get_snapshot, resource_level
 from tasks import manager as task_manager
@@ -219,6 +220,17 @@ def create_app() -> FastAPI:
     @app.get("/api/task-types")
     def api_task_types() -> dict[str, Any]:
         return {"types": available_types()}
+
+    @app.get("/api/plugins")
+    def api_plugins() -> dict[str, Any]:
+        """Plugins tiers chargés (Phase 8), + l'effet visible : connecteurs et types de tâches
+        disponibles au total (intégrés + plugins)."""
+        return {
+            "plugins": list_plugins(),
+            "plugins_dir": str(settings.plugins_dir),
+            "connectors": [c["name"] for c in available_connectors()],
+            "task_types": available_types(),
+        }
 
     @app.get("/api/tasks")
     def api_tasks_list(status: str | None = None, limit: int = 50) -> dict[str, Any]:

@@ -19,6 +19,11 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Awaitable, Callable
 
+from core.logging_setup import get_logger
+from plugins.manager import plugin_task_handlers
+
+logger = get_logger("s1mone.tasks")
+
 TaskHandler = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
 
 _HANDLERS: dict[str, TaskHandler] = {}
@@ -35,11 +40,24 @@ def register(name: str):
 
 
 def get_handler(name: str) -> TaskHandler | None:
-    return _HANDLERS.get(name)
+    """Handler intégré si `name` en est un, sinon handler fourni par un plugin (Phase 8) —
+    jamais l'inverse : un plugin ne peut pas redéfinir un type de tâche intégré."""
+    handler = _HANDLERS.get(name)
+    if handler is not None:
+        return handler
+    plugin_handlers = plugin_task_handlers()
+    if name in plugin_handlers:
+        return plugin_handlers[name]
+    return None
 
 
 def available_types() -> list[str]:
-    return sorted(_HANDLERS.keys())
+    """Types intégrés + types ajoutés par des plugins tiers (Phase 8)."""
+    plugin_handlers = plugin_task_handlers()
+    conflicts = set(plugin_handlers) & set(_HANDLERS)
+    for name in conflicts:
+        logger.warning(f"Plugin ignoré : le type de tâche '{name}' existe déjà (intégré).")
+    return sorted(set(_HANDLERS) | set(plugin_handlers))
 
 
 @register("sleep")

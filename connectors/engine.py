@@ -21,6 +21,7 @@ from connectors.gitlab import GitLabConnector
 from connectors.codeberg import CodebergConnector
 from connectors.pypi import PyPiConnector
 from connectors.sourceforge import SourceForgeConnector
+from plugins.manager import plugin_connectors
 
 logger = get_logger("s1mone.connectors")
 
@@ -38,9 +39,28 @@ _CONNECTORS: dict[str, Connector] = {
 }
 
 
+def _effective_connectors() -> dict[str, Connector]:
+    """Connecteurs intégrés + connecteurs fournis par des plugins tiers (Phase 8). En cas de
+    conflit de nom, le connecteur intégré gagne toujours (prévisibilité avant tout) : le plugin
+    est ignoré avec un avertissement dans les logs plutôt qu'une redéfinition silencieuse."""
+    merged = dict(_CONNECTORS)
+    for conn in plugin_connectors():
+        if conn.name in merged:
+            logger.warning(
+                f"Plugin ignoré : le connecteur '{conn.name}' existe déjà (intégré à S1M0NE)."
+            )
+            continue
+        merged[conn.name] = conn
+    return merged
+
+
 def available_connectors() -> list[dict[str, str]]:
-    """Liste des connecteurs enregistrés (nom + description), pour l'UI/API."""
-    return [{"name": c.name, "description": c.description} for c in _CONNECTORS.values()]
+    """Liste des connecteurs enregistrés (nom + description), pour l'UI/API — intègre les
+    connecteurs ajoutés par des plugins tiers (Phase 8)."""
+    return [
+        {"name": c.name, "description": c.description}
+        for c in _effective_connectors().values()
+    ]
 
 
 @dataclass
@@ -86,7 +106,7 @@ async def search_all(
 
     chosen = {
         name: conn
-        for name, conn in _CONNECTORS.items()
+        for name, conn in _effective_connectors().items()
         if sources is None or name in sources
     }
 

@@ -198,6 +198,20 @@ class Settings:
             )
         )
 
+    @property
+    def plugins_dir(self) -> Path:
+        """Dossier surveillé pour les plugins locaux (Phase 8) : tout fichier .py posé ici est
+        chargé au démarrage. Par défaut `plugins_local/` à la racine du projet (voir
+        plugins_local/README.md). Configurable (`[plugins] dir` dans config.toml, ou
+        $S1MONE_PLUGINS_DIR)."""
+        override = self.env_values.get("S1MONE_PLUGINS_DIR") or os.environ.get(
+            "S1MONE_PLUGINS_DIR"
+        )
+        if override:
+            return Path(override).expanduser().resolve()
+        relative = self.raw_toml.get("plugins", {}).get("dir", "plugins_local")
+        return (PROJECT_ROOT / relative).resolve()
+
     def get_secret(self, name: str, default: str | None = None) -> str | None:
         """Lit un secret : priorité à l'environnement système, puis .env, jamais config.toml."""
         return os.environ.get(name) or self.env_values.get(name) or default
