@@ -101,13 +101,18 @@ def forget(level: str, key: str, project_id: str | None = None) -> None:
         conn.execute("DELETE FROM memory WHERE level = ? AND key = ?", (level, storage_key))
 
 
-def list_memory(level: str | None = None, project_id: str | None = None) -> list[dict[str, Any]]:
+def list_memory(
+    level: str | None = None, project_id: str | None = None, query: str | None = None
+) -> list[dict[str, Any]]:
     """Liste les entrées mémoire (métadonnées uniquement, sans la valeur complète) — pour le
     debug/l'inspection (`s1mone memory list`).
 
     Pour le niveau "project", chaque entrée expose en plus "project_id" et une "key" débarrassée
     de son préfixe technique. `project_id` filtre sur un projet précis (implique level="project",
-    ou aucun niveau précisé)."""
+    ou aucun niveau précisé). `query` (Catégorie D, "recherche plein texte dans la mémoire") filtre
+    par sous-chaîne insensible à la casse/accents dans la clé (débarrassée de son préfixe projet)
+    OU dans la valeur JSON sérialisée — une recherche honnête et simple plutôt qu'un vrai moteur
+    d'indexation, largement suffisante vu le volume de données personnelles concerné ici."""
     if level is not None:
         _check_level(level)
     if project_id is not None and level not in (None, "project"):
@@ -117,12 +122,15 @@ def list_memory(level: str | None = None, project_id: str | None = None) -> list
     with get_connection() as conn:
         if level is None:
             rows = conn.execute(
-                "SELECT level, key, created_at FROM memory ORDER BY level, key"
+                "SELECT level, key, value, created_at FROM memory ORDER BY level, key"
             ).fetchall()
         else:
             rows = conn.execute(
-                "SELECT level, key, created_at FROM memory WHERE level = ? ORDER BY key", (level,)
+                "SELECT level, key, value, created_at FROM memory WHERE level = ? ORDER BY key",
+                (level,),
             ).fetchall()
+
+    needle = query.strip().casefold() if query and query.strip() else None
 
     entries: list[dict[str, Any]] = []
     for r in rows:
@@ -131,6 +139,10 @@ def list_memory(level: str | None = None, project_id: str | None = None) -> list
             pid, short_key = entry["key"].split(_PROJECT_KEY_SEPARATOR, 1)
             entry["project_id"] = pid
             entry["key"] = short_key
+        if needle is not None:
+            haystack = f"{entry['key']}\n{r['value'] or ''}".casefold()
+            if needle not in haystack:
+                continue
         entries.append(entry)
 
     if project_id is not None:

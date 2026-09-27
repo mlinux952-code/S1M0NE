@@ -251,6 +251,18 @@ s1mone stats                 # CLI, tableaux Rich
 curl localhost:8000/api/stats  # JSON brut
 ```
 
+## Recherche plein texte dans la mémoire (D.2)
+
+`/memory` (web) et `s1mone memory list --query <mot>` (CLI, alias `-q`) : filtre les entrées par
+sous-chaîne insensible à la casse, dans la clé **ou** dans la valeur enregistrée — combinable avec
+les filtres niveau/projet déjà existants (C.1). Recherche simple et honnête (pas d'index
+plein texte séparé, juste un filtre en mémoire sur un volume de données personnelles qui reste de
+toute façon modeste) plutôt qu'une fausse promesse de moteur de recherche sophistiqué.
+
+```bash
+s1mone memory list --query pain          # ou -q pain
+```
+
 ## Assistant agentique (B.2) — usage avancé, opt-in explicite
 
 L'assistant IA peut, sur demande explicite seulement, interroger deux outils **strictement en

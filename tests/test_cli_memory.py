@@ -44,6 +44,21 @@ def test_memory_list_filters_by_level(tmp_path, monkeypatch):
     assert " a " not in result.stdout  # espacé pour éviter un faux positif sur un autre mot
 
 
+def test_memory_list_query_filters_by_key_or_value(tmp_path, monkeypatch):
+    monkeypatch.setenv("S1MONE_DATA_DIR", str(tmp_path))
+    from core.db import init_db
+
+    init_db()
+    memory.remember("temporary", "shopping_list", "lait, pain")
+    memory.remember("temporary", "other", "rien à voir")
+
+    result = runner.invoke(app, ["memory", "list", "--query", "pain"])
+    assert result.exit_code == 0
+    assert "shopping_list" in result.stdout
+    assert "other" not in result.stdout
+    assert 'recherche : "pain"' in result.stdout
+
+
 def test_memory_list_invalid_level_shows_clear_error(tmp_path, monkeypatch):
     monkeypatch.setenv("S1MONE_DATA_DIR", str(tmp_path))
     result = runner.invoke(app, ["memory", "list", "--level", "n-importe-quoi"])

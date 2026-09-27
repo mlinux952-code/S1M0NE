@@ -635,6 +635,12 @@ def memory_list(
     project: Optional[str] = typer.Option(
         None, "--project", help="Filtrer sur un projet précis (id ou nom, niveau 'project')."
     ),
+    query: Optional[str] = typer.Option(
+        None,
+        "--query",
+        "-q",
+        help="Recherche plein texte (Catégorie D) : sous-chaîne insensible à la casse dans la clé ou la valeur.",
+    ),
 ) -> None:
     """Liste les entrées mémorisées (métadonnées uniquement — voir 'memory show' pour le contenu).
 
@@ -642,11 +648,12 @@ def memory_list(
     inspectable et supprimable à tout moment, rien n'est caché."""
     project_id = _resolve_project_or_exit(project) if project else None
     try:
-        entries = memory_module.list_memory(level, project_id=project_id)
+        entries = memory_module.list_memory(level, project_id=project_id, query=query)
     except ValueError as exc:
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(code=1) from exc
-    table = Table(title="S1M0NE — mémoire")
+    title = f"S1M0NE — mémoire (recherche : \"{query}\")" if query else "S1M0NE — mémoire"
+    table = Table(title=title)
     table.add_column("Niveau")
     table.add_column("Clé")
     table.add_column("Projet")

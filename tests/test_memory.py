@@ -125,3 +125,47 @@ def test_list_memory_filter_by_project_id():
 def test_list_memory_project_id_filter_requires_project_level():
     with pytest.raises(ValueError, match="project_id"):
         memory.list_memory(level="persistent", project_id="projet-1")
+
+
+# --- Recherche plein texte (Catégorie D, "et plus encore" post-NEXT_STEPS.md) -------------------
+
+
+def test_list_memory_query_matches_key():
+    memory.remember("temporary", "shopping_list", "lait, pain")
+    memory.remember("temporary", "other", "rien à voir")
+    entries = memory.list_memory(query="shopping")
+    assert len(entries) == 1
+    assert entries[0]["key"] == "shopping_list"
+
+
+def test_list_memory_query_matches_value():
+    memory.remember("temporary", "note1", "penser à arroser les plantes")
+    memory.remember("temporary", "note2", "rendez-vous chez le dentiste")
+    entries = memory.list_memory(query="plantes")
+    assert len(entries) == 1
+    assert entries[0]["key"] == "note1"
+
+
+def test_list_memory_query_is_case_insensitive():
+    memory.remember("temporary", "greeting", "Bonjour Tout Le Monde")
+    entries = memory.list_memory(query="bonjour")
+    assert len(entries) == 1
+
+
+def test_list_memory_query_no_match_returns_empty():
+    memory.remember("temporary", "note", "valeur quelconque")
+    assert memory.list_memory(query="introuvable") == []
+
+
+def test_list_memory_query_combines_with_level_and_project_filters():
+    memory.remember("project", "todo", "acheter du pain", project_id="projet-1")
+    memory.remember("project", "todo", "acheter du pain", project_id="projet-2")
+    entries = memory.list_memory(level="project", project_id="projet-1", query="pain")
+    assert len(entries) == 1
+    assert entries[0]["project_id"] == "projet-1"
+
+
+def test_list_memory_empty_query_string_is_ignored():
+    memory.remember("temporary", "note", "valeur")
+    assert len(memory.list_memory(query="   ")) == 1
+    assert len(memory.list_memory(query="")) == 1

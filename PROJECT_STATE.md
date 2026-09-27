@@ -323,8 +323,15 @@ attendre de sélection précise à chaque étape (même mandat que pour les Phas
     `/partials/stats` (rafraîchi toutes les 15s comme le dashboard), lien de nav "Statistiques"
     ajouté à `base.html`. Distinct de `s1mone status` (diagnostic santé) : `stats` répond à
     "combien ?", pas "est-ce que ça va ?". Suite complète : **412/412 passed**.
-  - Reste à faire pour la catégorie D : D.2 (recherche plein texte dans `/memory`), D.3
-    (consommer le niveau mémoire `session`, seul niveau encore réservé — voir DECISIONS.md D7).
+  - **D.2 — Recherche plein texte dans la mémoire : faite, testée (5 + 1 + 3 = 9 nouveaux
+    tests, ajouts `test_memory.py`/`test_cli_memory.py`/`test_web_memory.py`).**
+    `core/memory.py` : `list_memory()` gagne un paramètre `query` (sous-chaîne insensible à la
+    casse dans la clé courte ou la valeur JSON sérialisée), combinable avec `level`/`project_id`
+    déjà existants. CLI `s1mone memory list --query/-q`. Web : champ `<input type="search"
+    name="q">` sur `/memory`, `/partials/memory-list` accepte `q`. Suite complète : **422/422
+    passed**.
+  - Reste à faire pour la catégorie D : D.3 (consommer le niveau mémoire `session`, seul niveau
+    encore réservé — voir DECISIONS.md D7).
 
 **Important pour l'utilisateur** : `S1MONE_WEB_PASSWORD` doit être choisi et défini par
 l'utilisateur lui-même dans son `.env` sur sa machine réelle (secret que l'agent ne peut pas

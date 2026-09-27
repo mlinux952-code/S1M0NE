@@ -38,6 +38,33 @@ def test_partial_memory_list_empty_by_default():
     assert "Aucune entrée" in r.text
 
 
+def test_partial_memory_list_query_filters_results():
+    from core import memory as memory_module
+
+    memory_module.remember("temporary", "shopping_list", "lait, pain")
+    memory_module.remember("temporary", "other", "rien à voir")
+
+    r = client.get("/partials/memory-list", params={"q": "pain"})
+    assert r.status_code == 200
+    assert "shopping_list" in r.text
+    assert "other" not in r.text
+
+
+def test_partial_memory_list_query_no_match_mentions_the_query():
+    from core import memory as memory_module
+
+    memory_module.remember("temporary", "note", "valeur")
+    r = client.get("/partials/memory-list", params={"q": "introuvable"})
+    assert r.status_code == 200
+    assert "introuvable" in r.text
+
+
+def test_memory_page_has_search_field():
+    r = client.get("/memory")
+    assert r.status_code == 200
+    assert 'name="q"' in r.text
+
+
 def test_partial_memory_list_shows_persisted_entries():
     from core import memory
 

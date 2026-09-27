@@ -534,19 +534,22 @@ def create_app() -> FastAPI:
         )
 
     @app.get("/partials/memory-list", response_class=HTMLResponse)
-    def partial_memory_list(request: Request, level: str = "", project_id: str = "") -> HTMLResponse:
+    def partial_memory_list(
+        request: Request, level: str = "", project_id: str = "", q: str = ""
+    ) -> HTMLResponse:
         lvl = level or None
         pid = project_id or None
+        query = q or None
         error: str | None = None
         try:
-            entries = memory.list_memory(lvl, project_id=pid)
+            entries = memory.list_memory(lvl, project_id=pid, query=query)
         except ValueError as exc:
             entries = []
             error = str(exc)
         for e in entries:
             e["created_display"] = format_timestamp(e.get("created_at"))
         return templates.TemplateResponse(
-            request, "partials/memory_list.html", {"entries": entries, "error": error}
+            request, "partials/memory_list.html", {"entries": entries, "error": error, "query": query}
         )
 
     @app.get("/partials/memory-value", response_class=HTMLResponse)

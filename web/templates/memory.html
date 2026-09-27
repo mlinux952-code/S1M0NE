@@ -22,6 +22,9 @@
             {% for p in projects_list %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}
         </select>
     </label>
+    <label style="margin-left:1rem;">Recherche :
+        <input type="search" name="q" placeholder="clé ou contenu…">
+    </label>
     <button type="submit" style="margin-left:1rem;">Filtrer</button>
 </form>
 

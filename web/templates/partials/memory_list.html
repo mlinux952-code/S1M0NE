@@ -29,5 +29,5 @@
     {% endfor %}
 </table>
 {% else %}
-<p class="muted">Aucune entrée pour ce filtre.</p>
+<p class="muted">Aucune entrée{% if query %} pour la recherche "{{ query }}"{% else %} pour ce filtre{% endif %}.</p>
 {% endif %}
