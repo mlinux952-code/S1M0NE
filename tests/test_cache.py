@@ -4,7 +4,15 @@ import time
 
 import pytest
 
-from core.cache import cache_cleanup, cache_delete, cache_get, cache_set, make_key
+from core.cache import (
+    cache_cleanup,
+    cache_clear_all,
+    cache_delete,
+    cache_get,
+    cache_list,
+    cache_set,
+    make_key,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -64,3 +72,46 @@ def test_cache_cleanup_removes_only_expired_entries():
 def test_cache_uses_default_ttl_when_not_specified():
     cache_set("k5", "valeur-defaut")  # pas de ttl explicite -> settings.cache_default_ttl_seconds
     assert cache_get("k5") == "valeur-defaut"
+
+
+def test_cache_list_returns_most_recent_first():
+    cache_set("older", "a", source="npm", ttl=300)
+    cache_set("newer", "b", source="pypi", ttl=300)
+    entries = cache_list()
+    keys = [e["key"] for e in entries]
+    assert keys.index("newer") < keys.index("older")
+
+
+def test_cache_list_flags_expired_entries_without_deleting_them():
+    cache_set("fresh", "a", ttl=300)
+    cache_set("stale", "b", ttl=-1)  # déjà expirée dès la création
+    entries = {e["key"]: e for e in cache_list()}
+    assert entries["fresh"]["expired"] is False
+    assert entries["fresh"]["seconds_remaining"] > 0
+    assert entries["stale"]["expired"] is True
+    assert entries["stale"]["seconds_remaining"] == 0
+    # cache_list ne supprime rien : les deux entrées existent toujours après coup
+    assert len(cache_list()) == 2
+
+
+def test_cache_list_reports_source_and_value_size():
+    cache_set("k6", {"a": 1, "b": 2}, source="github", ttl=300)
+    entry = cache_list()[0]
+    assert entry["source"] == "github"
+    assert entry["value_size"] > 0
+
+
+def test_cache_list_respects_limit():
+    for i in range(5):
+        cache_set(f"key-{i}", i, ttl=300)
+    assert len(cache_list(limit=2)) == 2
+
+
+def test_cache_clear_all_removes_every_entry_valid_or_expired():
+    cache_set("valid", "a", ttl=300)
+    cache_set("gone", "b", ttl=-1)
+
+    removed = cache_clear_all()
+
+    assert removed == 2
+    assert cache_list() == []

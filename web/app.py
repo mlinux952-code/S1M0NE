@@ -38,7 +38,7 @@ from connectors.engine import (
     sort_results,
 )
 from core import auth, memory, notifications, permissions, projects, scheduler
-from core.config import settings
+from core.config import DEFAULT_CONFIG_PATH, DEFAULT_ENV_PATH, settings
 from core.db import init_db
 from core.logging_setup import get_logger
 from core.shell_runner import run_command as run_shell_command
@@ -299,6 +299,46 @@ def create_app() -> FastAPI:
             "connectors": [c["name"] for c in available_connectors()],
             "task_types": available_types(),
         }
+
+    @app.get("/plugins", response_class=HTMLResponse)
+    def plugins_page(request: Request) -> HTMLResponse:
+        """Page dédiée aux plugins (Catégorie E) : jusqu'ici uniquement inspectable en CLI
+        ('s1mone plugin list', Phase 8) ou via /api/plugins brut. Même transparence côté web."""
+        return templates.TemplateResponse(request, "plugins.html", {})
+
+    @app.get("/partials/plugins", response_class=HTMLResponse)
+    def partial_plugins(request: Request) -> HTMLResponse:
+        return templates.TemplateResponse(
+            request,
+            "partials/plugins.html",
+            {
+                "plugins": list_plugins(),
+                "plugins_dir": str(settings.plugins_dir),
+                "connectors": [c["name"] for c in available_connectors()],
+                "task_types": available_types(),
+            },
+        )
+
+    @app.get("/api/settings")
+    def api_settings() -> dict[str, Any]:
+        """Configuration effective de S1M0NE (Catégorie E), secrets masqués — voir
+        Settings.as_safe_dict() (core/config.py), jamais exposé nulle part avant."""
+        return settings.as_safe_dict()
+
+    @app.get("/settings", response_class=HTMLResponse)
+    def settings_page(request: Request) -> HTMLResponse:
+        """Page dédiée aux paramètres (Catégorie E) : lecture seule, volontairement — modifier
+        config.toml/.env reste un acte manuel et explicite (mega-prompt : rien de magique, aucun
+        réglage de sécurité changé sans que l'utilisateur ait ouvert le fichier lui-même)."""
+        return templates.TemplateResponse(
+            request,
+            "settings.html",
+            {
+                "config": settings.as_safe_dict(),
+                "config_path": str(DEFAULT_CONFIG_PATH),
+                "env_path": str(DEFAULT_ENV_PATH),
+            },
+        )
 
     @app.get("/api/notifications")
     def api_notifications_list(unread_only: bool = False, limit: int = 50) -> dict[str, Any]:

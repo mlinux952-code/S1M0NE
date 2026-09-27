@@ -1,0 +1,48 @@
+<div class="card">
+    <h2>Plugins chargés</h2>
+    {% if plugins %}
+    <table>
+        <tr><th>Nom</th><th>Source</th><th>Hooks implémentés</th></tr>
+        {% for p in plugins %}
+        <tr>
+            <td><code>{{ p.name }}</code></td>
+            <td>
+                <span class="badge {{ 'badge-ok' if p.source == 'paquet installé' else 'badge-warn' }}">
+                    {{ p.source }}
+                </span>
+            </td>
+            <td>{{ p.hooks | join(", ") if p.hooks else "—" }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+    {% else %}
+    <p class="muted">Aucun plugin chargé pour l'instant.</p>
+    {% endif %}
+    <p class="muted">
+        Dossier de plugins fichiers : <code>{{ plugins_dir }}</code> (tout fichier
+        <code>.py</code> posé ici, hors underscore initial, est chargé au démarrage).
+    </p>
+</div>
+
+<div class="card">
+    <h2>Effet visible</h2>
+    <p class="muted">Connecteurs de recherche disponibles (intégrés + plugins) :</p>
+    <p>{% for c in connectors %}<code>{{ c }}</code>{{ ", " if not loop.last else "" }}{% endfor %}</p>
+    <p class="muted">Types de tâches disponibles (intégrés + plugins) :</p>
+    <p>{% for t in task_types %}<code>{{ t }}</code>{{ ", " if not loop.last else "" }}{% endfor %}</p>
+</div>
+
+<div class="card">
+    <h2>Ajouter un plugin</h2>
+    <p class="muted">
+        Fichier local : dépose un <code>.py</code> dans le dossier ci-dessus, avec une fonction
+        décorée <code>@hookimpl</code> (<code>s1mone_connectors</code> et/ou
+        <code>s1mone_task_handlers</code>) — voir <code>plugins_local/README.md</code> et
+        <code>plugins_local/examples/</code> pour des modèles.
+    </p>
+    <p class="muted">
+        Paquet pip : ajoute un entry point du groupe <code>s1mone</code> dans ton
+        <code>pyproject.toml</code> — voir <code>examples/s1mone-plugin-example/</code> pour un
+        exemple complet et installable (<code>pip install -e examples/s1mone-plugin-example</code>).
+    </p>
+</div>

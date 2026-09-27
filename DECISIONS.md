@@ -448,3 +448,45 @@ pour que S1M0NE fonctionne. Conforme à la règle LOW RESOURCE FIRST (§3 du mé
   en exécutant la suite, les 3 tests échouent exactement comme sur la machine de l'utilisateur
   sans `conftest.py`, et passent avec. Suite complète (avec le plugin actif ET avec
   `conftest.py`) : 441/441 passed.
+
+## D20 — Catégorie E : exposer ce qui existait déjà (plugins, config, cache)
+
+- **Contexte** : mandat "tous et plus encore" réaffirmé après la clôture de la catégorie D.
+  Plutôt que d'inventer de nouvelles fonctionnalités, les trois pistes retenues exposent des
+  informations/actions déjà entièrement implémentées côté moteur mais jamais branchées sur une
+  façade utilisateur — cohérent avec le principe "un cerveau, plusieurs façades" du mega-prompt.
+- **E.1 — Page web `/plugins`.** `GET /api/plugins` existait déjà depuis la Phase 8 (retourne
+  `plugins`, `plugins_dir`, `connectors`, `task_types`) mais n'était consommé par aucune page —
+  le lien de nav "Plugins" pointait vers un `<span class="disabled">`. Ajout de `GET /plugins`
+  (page shell) + `GET /partials/plugins` (fragment htmx, `hx-trigger="load"` une seule fois : la
+  liste des plugins ne change pas pendant la durée de vie du process). Zéro nouvelle logique
+  métier : réutilise `list_plugins()`, `available_connectors()`, `available_types()` tels quels.
+- **E.2 — Page web `/settings` (+ CLI `s1mone config show`).** `Settings.as_safe_dict()`
+  (`core/config.py`) était déjà écrit et déjà testé (masquage des secrets via
+  `SENSITIVE_KEY_HINTS`, `_env_keys_present` qui ne liste que des noms de clés, jamais de
+  valeurs) mais totalement inutilisé nulle part (`grep` vide sur `as_safe_dict` avant cette
+  session). Ajout de `GET /api/settings` + `GET /settings` (page lecture seule, aucune
+  modification de `config.toml`/`.env` depuis le web — un geste manuel explicite reste
+  nécessaire, "rien de magique") et de `s1mone config show` en CLI (même source de données,
+  Rich tables par section). `[DECIDED]`
+- **E.3 — Gestion du cache : `s1mone cache list` / `s1mone cache clear`.** Complète les
+  compteurs déjà affichés par `s1mone stats` (D.1) : `stats` montre le total/valides/expirées,
+  `cache list`/`cache clear` permettent de voir le détail (clé, source, âge, taille) et d'agir
+  dessus. Deux ajouts dans `core/cache.py` : `cache_list()` (lecture seule, ne modifie jamais
+  l'état, contrairement à `cache_get()` qui elle ne filtre que par TTL) et `cache_clear_all()`
+  (vidage total). `cache clear` accepte `--key` (une entrée précise), `--expired-only` (garde
+  les valides) ou rien (tout vider), avec confirmation interactive sauf `--yes`/`-y` — même
+  pattern que `memory forget`/`project delete`/`schedule cancel`. Sans danger réel : le cache
+  n'est qu'une optimisation de vitesse (évite de recontacter des API à quota limité comme
+  GitHub), jamais une source de vérité.
+- **Bug introduit puis corrigé pendant cette session** : un premier jet de `config show` avait
+  par erreur coupé la fonction `plugin_list` en deux (un `edit_file` mal ciblé a inséré la
+  nouvelle commande CLI au milieu du corps de `plugin_list`, déplaçant ses deux derniers
+  `console.print` — connecteurs et types de tâches disponibles — dans `config_show`). Détecté
+  immédiatement par un test déjà existant (`test_plugin_list_empty`, Phase 8) qui vérifiait la
+  présence de "npm" dans la sortie de `s1mone plugin list` : passait avant l'erreur, échouait
+  après. Corrigé en replaçant les deux lignes dans la bonne fonction ; suite complète repassée
+  au vert. Aucune régression n'est restée invisible grâce aux tests déjà en place — leçon déjà
+  tirée mais reconfirmée : ne jamais faire confiance à un `edit_file` sans relancer la suite
+  complète immédiatement après.
+- Suite complète après E.1 + E.2 + E.3 : **465/465 passed.**

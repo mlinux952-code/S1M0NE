@@ -6,6 +6,8 @@ Commandes disponibles :
     s1mone stats    -> instantané d'usage (tâches, mémoire, cache, projets, notifications ...)
     s1mone system   -> aperçu CPU/RAM/swap/disque en direct
     s1mone version  -> version + infos plateforme
+    s1mone config show  -> configuration effective (config.toml + .env), secrets masqués (Cat. E)
+    s1mone cache list/clear -> détail et nettoyage manuel du cache de recherche (Cat. E)
 
 Le terminal doit rester utilisable même sans l'interface web (mega-prompt §6) :
 cette CLI ne dépend d'aucun serveur, elle appelle directement les modules core/system.
@@ -32,6 +34,7 @@ import connectors.engine as search_engine
 from connectors.engine import available_connectors, search_all
 from core import memory as memory_module
 from core import permissions
+from core.cache import cache_clear_all, cache_cleanup, cache_delete, cache_list
 from core.config import settings
 from core.db import backup_db, list_backups
 from core import notifications as notifications_module
@@ -83,6 +86,12 @@ app.add_typer(project_app, name="project")
 
 schedule_app = typer.Typer(help="Tâches récurrentes : répète un type de tâche toutes les N secondes/minutes/heures/jours.")
 app.add_typer(schedule_app, name="schedule")
+
+config_app = typer.Typer(help="Configuration effective de S1M0NE (Catégorie E), secrets masqués.")
+app.add_typer(config_app, name="config")
+
+cache_app = typer.Typer(help="Cache de recherche (Phase 4) : consultation et nettoyage manuel.")
+app.add_typer(cache_app, name="cache")
 
 
 _COMMANDS_NEEDING_DB = {
@@ -824,6 +833,94 @@ def plugin_list() -> None:
         f"Connecteurs disponibles (intégrés + plugins) : {[c['name'] for c in available_connectors()]}"
     )
     console.print(f"Types de tâches disponibles (intégrés + plugins) : {available_types()}")
+
+
+@config_app.command("show")
+def config_show() -> None:
+    """Affiche la configuration effective de S1M0NE (config.toml + .env fusionnés), secrets
+    masqués (Settings.as_safe_dict()) — lecture seule, modifie les fichiers toi-même si besoin."""
+    from rich.markup import escape
+
+    safe = settings.as_safe_dict()
+    for section, values in safe.items():
+        if section == "_env_keys_present":
+            continue
+        table = Table(title=escape(f"[{section}]"))
+        table.add_column("Clé")
+        table.add_column("Valeur")
+        if isinstance(values, dict):
+            for k, v in values.items():
+                table.add_row(str(k), str(v))
+        else:
+            table.add_row(section, str(values))
+        console.print(table)
+
+    env_keys = safe.get("_env_keys_present", [])
+    console.print(
+        f"[dim]Variables d'environnement actives (.env) : {', '.join(env_keys) or 'aucune'}[/dim]"
+    )
+
+
+@cache_app.command("list")
+def cache_list_cmd(
+    limit: int = typer.Option(50, help="Nombre maximum d'entrées affichées (les plus récentes)."),
+) -> None:
+    """Liste les entrées du cache de recherche (Phase 4), complète les compteurs de 's1mone stats'
+    en montrant le détail : clé, source, âge, état (valide/expirée), taille."""
+    entries = cache_list(limit=limit)
+    table = Table(title="S1M0NE — cache de recherche")
+    table.add_column("Clé")
+    table.add_column("Source")
+    table.add_column("Créée à")
+    table.add_column("État")
+    table.add_column("Taille")
+    for e in entries:
+        etat = "[green]valide[/green]" if not e["expired"] else "[red]expirée[/red]"
+        if not e["expired"]:
+            etat += f" ({e['seconds_remaining']}s restantes)"
+        table.add_row(
+            e["key"],
+            e["source"] or "-",
+            format_timestamp(e["created_at"]),
+            etat,
+            f"{e['value_size']} o",
+        )
+    console.print(table)
+    if not entries:
+        console.print("[grey58]Cache vide.[/grey58]")
+
+
+@cache_app.command("clear")
+def cache_clear_cmd(
+    key: Optional[str] = typer.Option(
+        None, "--key", help="Ne supprime que cette clé précise (voir 's1mone cache list')."
+    ),
+    expired_only: bool = typer.Option(
+        False, "--expired-only", help="Ne supprime que les entrées déjà expirées (garde les valides)."
+    ),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Ne pas demander de confirmation."),
+) -> None:
+    """Vide le cache de recherche, en tout ou en partie. Sans danger : au pire, la prochaine
+    recherche recontacte la source au lieu de servir une réponse déjà connue (Phase 4)."""
+    if key:
+        if not yes and not typer.confirm(f"Supprimer l'entrée de cache '{key}' ?"):
+            console.print("[grey58]Annulé.[/grey58]")
+            raise typer.Exit(code=0)
+        cache_delete(key)
+        console.print(f"[yellow]Entrée '{key}' supprimée (si elle existait).[/yellow]")
+        return
+    if expired_only:
+        if not yes and not typer.confirm("Supprimer toutes les entrées expirées du cache ?"):
+            console.print("[grey58]Annulé.[/grey58]")
+            raise typer.Exit(code=0)
+        n = cache_cleanup()
+        console.print(f"[yellow]{n} entrée(s) expirée(s) supprimée(s).[/yellow]")
+        return
+    if not yes and not typer.confirm("Vider ENTIÈREMENT le cache de recherche (valides + expirées) ?"):
+        console.print("[grey58]Annulé.[/grey58]")
+        raise typer.Exit(code=0)
+    n = cache_clear_all()
+    console.print(f"[yellow]{n} entrée(s) supprimée(s) (cache entièrement vidé).[/yellow]")
 
 
 @backup_app.command("create")

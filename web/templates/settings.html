@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Paramètres{% endblock %}
+{% block content %}
+<h1>Paramètres</h1>
+<p class="hint">
+    Configuration effective de S1M0NE — lecture seule, volontairement : modifier
+    <code>{{ config_path }}</code> (réglages non sensibles) ou <code>{{ env_path }}</code>
+    (secrets, jamais commité) reste un geste manuel et explicite, rien n'est jamais changé à ta
+    place depuis cette page (mega-prompt : rien de magique). Toute clé ressemblant à un secret
+    (token/clé/mot de passe) est automatiquement masquée ci-dessous.
+</p>
+
+{% for section, values in config.items() %}
+{% if section != "_env_keys_present" %}
+<div class="card">
+    <h2>[{{ section }}]</h2>
+    {% if values is mapping %}
+    <table>
+        <tr><th>Clé</th><th>Valeur</th></tr>
+        {% for k, v in values.items() %}
+        <tr><td><code>{{ k }}</code></td><td><code>{{ v }}</code></td></tr>
+        {% endfor %}
+    </table>
+    {% else %}
+    <p><code>{{ values }}</code></p>
+    {% endif %}
+</div>
+{% endif %}
+{% endfor %}
+
+<div class="card">
+    <h2>Variables d'environnement actives (.env)</h2>
+    {% if config._env_keys_present %}
+    <p class="muted">Noms des clés définies (valeurs jamais affichées ici, même masquées) :</p>
+    <p>{% for k in config._env_keys_present %}<code>{{ k }}</code>{{ ", " if not loop.last else "" }}{% endfor %}</p>
+    {% else %}
+    <p class="muted">Aucune (fichier .env absent ou vide).</p>
+    {% endif %}
+</div>
+{% endblock %}

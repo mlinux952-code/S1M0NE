@@ -83,6 +83,49 @@ def cache_delete(key: str) -> None:
         conn.execute("DELETE FROM cache WHERE key = ?", (key,))
 
 
+def cache_list(limit: int = 50) -> list[dict[str, Any]]:
+    """Liste les entrées de cache les plus récentes (métadonnées seulement, jamais la valeur
+    complète — juste sa taille — pour rester lisible même si une valeur cachée est volumineuse).
+
+    Chaque entrée : key, source, created_at (timestamp Unix), ttl (secondes), expired (bool),
+    seconds_remaining (0 si déjà expirée), value_size (taille en octets de la valeur JSON).
+    """
+    now = time.time()
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT key, value, source, created_at, ttl FROM cache ORDER BY created_at DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    entries = []
+    for row in rows:
+        age = now - row["created_at"]
+        expired = age > row["ttl"]
+        entries.append(
+            {
+                "key": row["key"],
+                "source": row["source"] or "",
+                "created_at": row["created_at"],
+                "ttl": row["ttl"],
+                "expired": expired,
+                "seconds_remaining": 0 if expired else int(row["ttl"] - age),
+                "value_size": len(row["value"]) if row["value"] else 0,
+            }
+        )
+    return entries
+
+
+def cache_clear_all() -> int:
+    """Supprime TOUTES les entrées de cache (valides et expirées). Retourne le nombre supprimé.
+
+    Sans danger pour les données de S1M0NE (le cache n'est qu'une optimisation de vitesse pour
+    les recherches déjà limitées en fréquence, ex. GitHub) : au pire, la prochaine recherche
+    recontacte la source au lieu de servir une réponse déjà connue.
+    """
+    with get_connection() as conn:
+        cursor = conn.execute("DELETE FROM cache")
+        return cursor.rowcount
+
+
 def cache_cleanup(now: float | None = None) -> int:
     """Supprime toutes les entrées expirées. Retourne le nombre de lignes supprimées.
 

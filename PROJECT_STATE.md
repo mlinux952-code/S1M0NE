@@ -347,6 +347,25 @@ attendre de sélection précise à chaque étape (même mandat que pour les Phas
     Plus aucune tâche connue dans NEXT_STEPS.md ni dans les idées post-C.3 — mandat "tous et plus
     encore" rempli une nouvelle fois ; à rediscuter avec l'utilisateur pour une éventuelle
     catégorie E, ou considérer S1M0NE comme fonctionnellement complet pour l'instant.
+  - **Catégorie E ("tous et plus encore" réaffirmé une nouvelle fois) : terminée.** Voir
+    DECISIONS.md D20 pour le détail. Trois pistes, toutes exposant une logique déjà écrite mais
+    jamais branchée sur une façade utilisateur :
+    - **E.1 — Page web `/plugins`** : remplace le lien de nav désactivé, réutilise
+      entièrement `/api/plugins` (Phase 8) via `hx-trigger="load"` unique (la liste ne change
+      pas en cours d'exécution). Aucune nouvelle logique métier.
+    - **E.2 — Page web `/settings` + CLI `s1mone config show`** : branche
+      `Settings.as_safe_dict()` (déjà écrit et déjà testé pour le masquage des secrets, mais
+      totalement inutilisé avant cette session) sur `GET /settings` (lecture seule, aucune
+      modification de fichier depuis le web) et sur une nouvelle commande CLI miroir.
+    - **E.3 — `s1mone cache list` / `s1mone cache clear`** : complète les compteurs déjà
+      affichés par `s1mone stats` (D.1) avec le détail par entrée et la possibilité d'agir
+      (`--key`, `--expired-only`, ou vidage complet), confirmation interactive sauf `--yes`.
+      Deux ajouts dans `core/cache.py` : `cache_list()` (lecture seule) et `cache_clear_all()`.
+    - Suite complète : **465/465 passed** (24 nouveaux tests : `test_web_plugins.py`,
+      `test_web_settings.py`, `test_cli_config.py`, `test_cli_cache.py`, ajouts dans
+      `test_cache.py`).
+    - Aucune nouvelle idée identifiée après E — S1M0NE couvre maintenant, via au moins une
+      façade (CLI et/ou web), toute logique métier déjà écrite dans le projet.
   - **Post-catégorie D, deux correctifs suite à la mise à jour réelle chez l'utilisateur** :
     1. `install.sh` et `scripts/*.sh` avaient perdu leur bit exécutable dans un commit précédent
        (bug de l'environnement de travail de l'agent) → `./install.sh` échouait avec "Permission

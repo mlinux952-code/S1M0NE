@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Plugins{% endblock %}
+{% block content %}
+<h1>Plugins</h1>
+<p class="hint">
+    S1M0NE s'étend sans jamais toucher à son code central (Phase 8, Pluggy) : deux mécanismes de
+    découverte — fichier <code>.py</code> déposé dans le dossier de plugins (zéro friction, usage
+    personnel), ou paquet pip installé avec un entry point du groupe <code>s1mone</code>
+    (distribution réelle, voir <code>examples/s1mone-plugin-example/</code>). Transparence
+    totale : ce que S1M0NE a réellement chargé, jamais caché.
+</p>
+
+<section id="plugins-panel"
+         hx-get="/partials/plugins"
+         hx-trigger="load"
+         hx-swap="innerHTML">
+    <p class="muted">Chargement…</p>
+</section>
+{% endblock %}
