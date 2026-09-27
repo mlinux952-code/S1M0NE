@@ -16,6 +16,15 @@
            style="width:280px; padding:0.4rem;">
     <input type="number" name="limit" value="5" min="1" max="50" style="width:70px; padding:0.4rem;"
            title="Résultats max par source">
+    <label>Trier par :
+        <select name="sort">
+            <option value="relevance">pertinence</option>
+            <option value="stars">étoiles (GitHub/GitLab/Codeberg)</option>
+            <option value="downloads">téléchargements (Hugging Face)</option>
+            <option value="name">nom</option>
+        </select>
+    </label>
+    <input type="hidden" name="page" value="1">
     <button type="submit">Rechercher</button>
 </form>
 

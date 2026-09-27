@@ -79,3 +79,44 @@ def test_search_command_shows_errors_when_a_connector_fails(tmp_path, monkeypatc
     assert result.exit_code == 0
     assert "panne simulée" in result.stdout
     assert "Aucun résultat" in result.stdout
+
+
+def test_search_command_sort_by_name(tmp_path, monkeypatch):
+    monkeypatch.setenv("S1MONE_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(cli_main, "search_all", _fake_search_all)
+
+    result = runner.invoke(app, ["search", "react", "--sort", "name"])
+    assert result.exit_code == 0
+    # "Flask" (F) doit apparaître avant la ligne "npm" (source du résultat "react", r) : tri
+    # alphabétique insensible à la casse (le titre du tableau contient déjà "react", donc on
+    # compare sur les lignes de résultats plutôt que sur le mot "react" lui-même).
+    assert result.stdout.index("Flask") < result.stdout.index("npm")
+
+
+def test_search_command_invalid_sort_shows_clear_error(tmp_path, monkeypatch):
+    monkeypatch.setenv("S1MONE_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(cli_main, "search_all", _fake_search_all)
+
+    result = runner.invoke(app, ["search", "react", "--sort", "date"])
+    assert result.exit_code == 1
+    assert "invalide" in result.stdout.lower()
+
+
+def test_search_command_pagination_shows_page_info(tmp_path, monkeypatch):
+    monkeypatch.setenv("S1MONE_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(cli_main, "search_all", _fake_search_all)
+
+    result = runner.invoke(app, ["search", "react", "--page-size", "1"])
+    assert result.exit_code == 0
+    assert "page 1/2" in result.stdout.lower()
+    assert "--page 2" in result.stdout
+
+
+def test_search_command_page_two_shows_second_result_only(tmp_path, monkeypatch):
+    monkeypatch.setenv("S1MONE_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(cli_main, "search_all", _fake_search_all)
+
+    result = runner.invoke(app, ["search", "react", "--page-size", "1", "--page", "2"])
+    assert result.exit_code == 0
+    assert "Flask" in result.stdout
+    assert "npm" not in result.stdout  # le résultat "react" (source npm) est sur la page 1

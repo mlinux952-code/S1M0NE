@@ -217,6 +217,19 @@ Pour un démarrage dès le boot, avant toute connexion (facultatif, sans droits 
 `loginctl enable-linger $USER`. Si `systemd` n'est pas disponible sur ta machine, le script
 l'indique clairement et propose une alternative (`cron @reboot`).
 
+## Tri et pagination de la recherche (C.2)
+
+```bash
+s1mone search flask --sort stars       # pertinence (défaut) | stars | downloads | name
+s1mone search flask --page 2 --page-size 20
+```
+
+"stars" trie sur `extra.stars` (GitHub/GitLab/Codeberg), "downloads" sur `extra.downloads`
+(Hugging Face) — les résultats des sources qui n'ont pas ce champ sont poussés en fin de liste
+plutôt que d'inventer une valeur. Pas de tri "par date" : aucun connecteur ne fournit aujourd'hui
+de date normalisée (voir `connectors/engine.py`). Côté web, un sélecteur "Trier par" sur `/search`
+et des boutons Précédent/Suivant apparaissent dès qu'il y a plus d'une page de résultats.
+
 ## Page web Mémoire (C.1)
 
 `/memory` — jusqu'ici la mémoire (Phase 7) n'était inspectable qu'en CLI

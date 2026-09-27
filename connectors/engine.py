@@ -92,6 +92,63 @@ async def _run_one(source_name: str, connector: Connector, query: str, limit: in
         return SourceOutcome(source=source_name, error=str(exc))
 
 
+# --- Tri / pagination (NEXT_STEPS.md §C.2) -------------------------------------------------
+#
+# "relevance" (par défaut) préserve l'ordre déjà renvoyé par les connecteurs (pertinence native
+# de chaque source, Phase 5) : aucune reconstruction inventée d'un score de pertinence global.
+# "stars"/"downloads" trient sur un champ réellement présent dans `extra` pour au moins une
+# source (GitHub/GitLab/Codeberg pour stars, Hugging Face pour downloads) — les résultats des
+# autres sources, qui n'ont pas ce champ, sont poussés en fin de liste plutôt que d'halluciner
+# une valeur. Pas de tri "par date" : aucun connecteur ne renvoie aujourd'hui de date normalisée
+# (voir DECISIONS.md) — l'ajouter reviendrait à fabriquer un critère non fiable.
+SORT_OPTIONS: tuple[str, ...] = ("relevance", "stars", "downloads", "name")
+
+DEFAULT_PAGE_SIZE = 20
+
+
+def sort_results(results: list[dict[str, Any]], sort_by: str = "relevance") -> list[dict[str, Any]]:
+    """Trie une liste de résultats déjà agrégés (voir `search_all`). Lève ValueError si `sort_by`
+    n'est pas une des options connues."""
+    if sort_by not in SORT_OPTIONS:
+        raise ValueError(f"Tri invalide : '{sort_by}'. Options : {', '.join(SORT_OPTIONS)}.")
+    if sort_by == "relevance":
+        return list(results)
+    if sort_by == "name":
+        return sorted(results, key=lambda r: (r.get("name") or "").lower())
+
+    field = sort_by  # "stars" ou "downloads" : nom de champ identique dans `extra`
+
+    def _key(r: dict[str, Any]) -> tuple[bool, float]:
+        value = (r.get("extra") or {}).get(field)
+        if not isinstance(value, (int, float)):
+            return (True, 0.0)  # pas de valeur numérique : toujours en fin de liste
+        return (False, -float(value))  # tri décroissant, valeurs présentes d'abord
+
+    return sorted(results, key=_key)
+
+
+def paginate_results(
+    results: list[dict[str, Any]], page: int = 1, page_size: int = DEFAULT_PAGE_SIZE
+) -> dict[str, Any]:
+    """Découpe une liste déjà triée en pages. Lève ValueError si `page`/`page_size` sont
+    invalides (jamais un comportement silencieusement incorrect, ex. une page négative)."""
+    if page < 1:
+        raise ValueError("Le numéro de page doit être >= 1.")
+    if page_size < 1:
+        raise ValueError("La taille de page doit être >= 1.")
+
+    total = len(results)
+    total_pages = max(1, -(-total // page_size))  # division entière arrondie au supérieur
+    start = (page - 1) * page_size
+    return {
+        "items": results[start : start + page_size],
+        "page": page,
+        "page_size": page_size,
+        "total": total,
+        "total_pages": total_pages,
+    }
+
+
 async def search_all(
     query: str, limit_per_source: int = 10, sources: list[str] | None = None
 ) -> dict[str, Any]:

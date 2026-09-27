@@ -289,7 +289,16 @@ attendre de sélection précise à chaque étape (même mandat que pour les Phas
   htmx (`hx-confirm`). Lien de nav "Mémoire" activé dans `base.html` (était `disabled` depuis la
   Phase 2) ; tooltip "Plugins" corrigé au passage (mentionnait encore "Arrive en Phase 8", alors
   que la Phase 8 est terminée depuis longtemps).
-- **Suite immédiate** : C.2 (tri/pagination recherche), C.3 (paquet pip d'exemple).
+- **C.2 — Tri/pagination recherche : faite, testée (18 + 4 + 6 = 28 nouveaux tests :**
+  **`test_search_sort_pagination.py` (18), ajouts `test_cli_search.py` (4),**
+  **`test_web_search.py` (6)).** `connectors/engine.py` : `sort_results()` (relevance/stars/
+  downloads/name — pas de tri "date", aucun connecteur n'en fournit une, choix honnête plutôt
+  que fabriquer un critère non fiable) + `paginate_results()`. CLI `s1mone search --sort/--page/
+  --page-size`. Web : sélecteur "Trier par" sur `/search`, boutons Précédent/Suivant (htmx
+  `hx-vals`, réutilisés en JSON pré-sérialisé côté Python pour rester compatible avec l'absence
+  du filtre Jinja2 `tojson` non enregistré ici) sur `/partials/search-results`, `/api/search`
+  accepte `sort`/`page`/`page_size`.
+- **Suite immédiate** : C.3 (paquet pip d'exemple pour un plugin distribué).
 
 **Important pour l'utilisateur** : `S1MONE_WEB_PASSWORD` doit être choisi et défini par
 l'utilisateur lui-même dans son `.env` sur sa machine réelle (secret que l'agent ne peut pas

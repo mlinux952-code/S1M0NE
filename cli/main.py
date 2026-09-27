@@ -27,6 +27,7 @@ from ai.gateway import available_providers
 from ai.gateway import check_all_providers
 from ai.gateway import converse as ai_converse
 from ai.gateway import reset_conversation
+import connectors.engine as search_engine
 from connectors.engine import available_connectors, search_all
 from core import memory as memory_module
 from core import permissions
@@ -219,6 +220,15 @@ def search(
         help="Sources séparées par des virgules (ex: npm,github). Par défaut : toutes.",
     ),
     limit: int = typer.Option(10, help="Nombre maximum de résultats par source."),
+    sort: str = typer.Option(
+        "relevance",
+        "--sort",
+        help=f"Tri des résultats agrégés (NEXT_STEPS §C.2). Options : {', '.join(search_engine.SORT_OPTIONS)}.",
+    ),
+    page: int = typer.Option(1, "--page", help="Numéro de page (résultats déjà triés)."),
+    page_size: int = typer.Option(
+        search_engine.DEFAULT_PAGE_SIZE, "--page-size", help="Résultats affichés par page."
+    ),
     list_sources: bool = typer.Option(
         False, "--list-sources", help="Affiche juste la liste des sources disponibles et quitte."
     ),
@@ -242,14 +252,23 @@ def search(
     source_list = [s.strip() for s in sources.split(",") if s.strip()] if sources else None
     outcome = asyncio.run(search_all(query, limit_per_source=limit, sources=source_list))
 
-    results = outcome["results"]
+    try:
+        sorted_results = search_engine.sort_results(outcome["results"], sort_by=sort)
+        page_info = search_engine.paginate_results(sorted_results, page=page, page_size=page_size)
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=1) from exc
+
+    results = page_info["items"]
     errors = outcome["errors"]
     cache_hits = outcome["cache_hits"]
 
     # overflow="ellipsis" + no_wrap=True : une seule ligne par résultat, tronquée proprement avec
     # "…", au lieu de tableaux qui explosent sur 4-5 lignes par résultat (retour utilisateur :
     # "tableau trop large / difficile à lire" — voir PROJECT_STATE.md).
-    table = Table(title=f"S1M0NE — recherche : \"{query}\"")
+    table = Table(
+        title=f"S1M0NE — recherche : \"{query}\" (tri : {sort}, page {page_info['page']}/{page_info['total_pages']})"
+    )
     table.add_column("Source", max_width=12, no_wrap=True)
     table.add_column("Nom", max_width=28, overflow="ellipsis", no_wrap=True)
     table.add_column("Description", max_width=45, overflow="ellipsis", no_wrap=True)
@@ -263,6 +282,12 @@ def search(
         table.add_row(r["source"], r["name"] + note, description, r.get("url") or "")
 
     console.print(table)
+
+    if page_info["total"] > page_info["page_size"]:
+        console.print(
+            f"[grey58]{page_info['total']} résultat(s) au total sur {page_info['total_pages']} "
+            f"page(s) — voir la page suivante avec --page {page_info['page'] + 1}.[/grey58]"
+        )
 
     if not results:
         console.print("[grey58]Aucun résultat.[/grey58]")

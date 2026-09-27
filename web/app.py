@@ -28,7 +28,14 @@ from ai.base import ProviderError
 from ai.gateway import available_providers
 from ai.gateway import converse as ai_converse
 from ai.gateway import get_conversation_history, reset_conversation
-from connectors.engine import available_connectors, search_all
+from connectors.engine import (
+    DEFAULT_PAGE_SIZE,
+    SORT_OPTIONS,
+    available_connectors,
+    paginate_results,
+    search_all,
+    sort_results,
+)
 from core import auth, memory, notifications, permissions, projects, scheduler
 from core.config import settings
 from core.db import init_db
@@ -372,9 +379,30 @@ def create_app() -> FastAPI:
         )
 
     @app.get("/api/search")
-    async def api_search(q: str = "", sources: str | None = None, limit: int = 10) -> dict[str, Any]:
+    async def api_search(
+        q: str = "",
+        sources: str | None = None,
+        limit: int = 10,
+        sort: str = "relevance",
+        page: int = 1,
+        page_size: int = DEFAULT_PAGE_SIZE,
+    ) -> dict[str, Any]:
         source_list = [s.strip() for s in sources.split(",") if s.strip()] if sources else None
-        return await search_all(q, limit_per_source=limit, sources=source_list)
+        outcome = await search_all(q, limit_per_source=limit, sources=source_list)
+        try:
+            ordered = sort_results(outcome["results"], sort_by=sort)
+            page_info = paginate_results(ordered, page=page, page_size=page_size)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {
+            "results": page_info["items"],
+            "errors": outcome["errors"],
+            "cache_hits": outcome["cache_hits"],
+            "page": page_info["page"],
+            "page_size": page_info["page_size"],
+            "total": page_info["total"],
+            "total_pages": page_info["total_pages"],
+        }
 
     @app.get("/api/search/sources")
     def api_search_sources() -> dict[str, Any]:
@@ -382,7 +410,13 @@ def create_app() -> FastAPI:
 
     @app.get("/partials/search-results", response_class=HTMLResponse)
     async def partial_search_results(
-        request: Request, q: str = "", sources: str | None = None, limit: int = 10
+        request: Request,
+        q: str = "",
+        sources: str | None = None,
+        limit: int = 10,
+        sort: str = "relevance",
+        page: int = 1,
+        page_size: int = DEFAULT_PAGE_SIZE,
     ) -> HTMLResponse:
         source_list = [s.strip() for s in sources.split(",") if s.strip()] if sources else None
         outcome = (
@@ -390,10 +424,37 @@ def create_app() -> FastAPI:
             if q.strip()
             else {"results": [], "errors": {}, "cache_hits": []}
         )
+        sort_error: str | None = None
+        try:
+            ordered = sort_results(outcome["results"], sort_by=sort)
+            page_info = paginate_results(ordered, page=page, page_size=page_size)
+        except ValueError as exc:
+            sort_error = str(exc)
+            page_info = {"items": [], "page": 1, "page_size": page_size, "total": 0, "total_pages": 1}
+
+        # Les liens Précédent/Suivant (htmx hx-vals) rejouent exactement les mêmes filtres, pour
+        # ne jamais perdre la recherche/le tri en changeant de page.
+        base_vals = {"q": q, "sources": sources or "", "limit": limit, "sort": sort, "page_size": page_size}
+        prev_vals = json.dumps({**base_vals, "page": max(1, page_info["page"] - 1)}, ensure_ascii=False)
+        next_vals = json.dumps({**base_vals, "page": page_info["page"] + 1}, ensure_ascii=False)
+
         return templates.TemplateResponse(
             request,
             "partials/search_results.html",
-            {"query": q, **outcome},
+            {
+                "query": q,
+                "errors": outcome["errors"],
+                "cache_hits": outcome["cache_hits"],
+                "results": page_info["items"],
+                "page": page_info["page"],
+                "total_pages": page_info["total_pages"],
+                "total": page_info["total"],
+                "sort_by": sort,
+                "sort_error": sort_error,
+                "prev_vals": prev_vals,
+                "next_vals": next_vals,
+                "sort_options": SORT_OPTIONS,
+            },
         )
 
     @app.get("/search", response_class=HTMLResponse)

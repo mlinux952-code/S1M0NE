@@ -1,7 +1,9 @@
 <div class="card">
-    {% if query.strip() %}
+    {% if sort_error %}
+    <p class="muted" style="color:#e05a5a;">{{ sort_error }}</p>
+    {% elif query.strip() %}
     <h2>Résultats pour "{{ query }}"
-        <span class="badge badge-ok">{{ results | length }} résultat(s)</span>
+        <span class="badge badge-ok">{{ total }} résultat(s)</span>
     </h2>
 
     {% if cache_hits %}
@@ -24,6 +26,8 @@
                 <td><span class="badge badge-ok">{{ r.source }}</span></td>
                 <td>{{ r.name }}
                     {% if r.extra.exact_match_only %}<span class="muted">(nom exact)</span>{% endif %}
+                    {% if r.extra.stars is not none %}<span class="muted">★ {{ r.extra.stars }}</span>{% endif %}
+                    {% if r.extra.downloads is not none %}<span class="muted">⬇ {{ r.extra.downloads }}</span>{% endif %}
                 </td>
                 <td>{{ r.description or '' }}</td>
                 <td>{% if r.url %}<a href="{{ r.url }}" target="_blank" rel="noopener">ouvrir</a>{% endif %}</td>
@@ -33,6 +37,28 @@
         {% endfor %}
         </tbody>
     </table>
+
+    {% if total_pages > 1 %}
+    <div class="pagination" style="margin-top:1rem; display:flex; align-items:center; gap:0.75rem;">
+        <button
+            type="button"
+            {% if page <= 1 %}disabled{% endif %}
+            hx-get="/partials/search-results"
+            hx-vals='{{ prev_vals }}'
+            hx-target="#search-results"
+            hx-swap="innerHTML"
+        >« Précédent</button>
+        <span class="muted">Page {{ page }} / {{ total_pages }} ({{ total }} résultat(s) au total)</span>
+        <button
+            type="button"
+            {% if page >= total_pages %}disabled{% endif %}
+            hx-get="/partials/search-results"
+            hx-vals='{{ next_vals }}'
+            hx-target="#search-results"
+            hx-swap="innerHTML"
+        >Suivant »</button>
+    </div>
+    {% endif %}
     {% else %}
     <p class="muted">Tape un terme puis clique sur "Rechercher".</p>
     {% endif %}
