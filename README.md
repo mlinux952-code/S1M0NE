@@ -237,6 +237,20 @@ et des boutons Précédent/Suivant apparaissent dès qu'il y a plus d'une page d
 "Voir" pour le contenu complet d'une entrée, bouton "Supprimer" (confirmation explicite requise).
 Rien de nouveau côté données : cette page ne fait qu'exposer `core/memory.py` déjà existant.
 
+## Statistiques d'usage (D.1)
+
+`s1mone stats` (CLI) et `/stats` (web) : un instantané de ce que S1M0NE contient et fait — tâches
+par statut + taux de succès, entrées de mémoire par niveau, cache de recherche (valides/expirées),
+nombre de projets, notifications (total/non lues), tâches récurrentes (total/actives). Zéro
+nouvelle table : `core/stats.py` agrège des compteurs déjà exposés par les modules existants.
+Différent de `s1mone status` (diagnostic de bonne santé : config/disque/ressources) — `stats`
+répond à "combien ?", `status` répond à "est-ce que ça va ?".
+
+```bash
+s1mone stats                 # CLI, tableaux Rich
+curl localhost:8000/api/stats  # JSON brut
+```
+
 ## Assistant agentique (B.2) — usage avancé, opt-in explicite
 
 L'assistant IA peut, sur demande explicite seulement, interroger deux outils **strictement en

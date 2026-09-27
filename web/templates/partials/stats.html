@@ -1,0 +1,41 @@
+<div class="card">
+    <h2>Tâches</h2>
+    <table>
+        <tr><th>Total</th><td>{{ stats.tasks.total }}</td></tr>
+        {% for status, n in stats.tasks.by_status.items() %}
+        <tr><th>{{ status }}</th><td>{{ n }}</td></tr>
+        {% endfor %}
+        <tr><th>Taux de succès</th><td>{{ stats.tasks.success_rate_percent ~ " %" if stats.tasks.success_rate_percent is not none else "—" }}</td></tr>
+    </table>
+</div>
+
+<div class="card">
+    <h2>Mémoire</h2>
+    <table>
+        <tr><th>Total d'entrées</th><td>{{ stats.memory.total }}</td></tr>
+        {% for level, n in stats.memory.by_level.items() %}
+        <tr><th>{{ level }}</th><td>{{ n }}</td></tr>
+        {% endfor %}
+    </table>
+    <p class="muted"><a href="/memory">Voir le détail dans Mémoire</a>.</p>
+</div>
+
+<div class="card">
+    <h2>Cache de recherche</h2>
+    <table>
+        <tr><th>Total</th><td>{{ stats.cache.total }}</td></tr>
+        <tr><th>Valides</th><td>{{ stats.cache.valid }}</td></tr>
+        <tr><th>Expirées</th><td>{{ stats.cache.expired }}</td></tr>
+    </table>
+</div>
+
+<div class="card">
+    <h2>Projets, notifications, tâches récurrentes</h2>
+    <table>
+        <tr><th>Projets</th><td>{{ stats.projects.total }}</td></tr>
+        <tr><th>Notifications (total / non lues)</th><td>{{ stats.notifications.total }} / {{ stats.notifications.unread }}</td></tr>
+        <tr><th>Tâches récurrentes (total / actives)</th><td>{{ stats.schedules.total }} / {{ stats.schedules.enabled }}</td></tr>
+    </table>
+</div>
+
+<p class="muted">Généré à : {{ generated_display }} — actualisé automatiquement toutes les 15s.</p>

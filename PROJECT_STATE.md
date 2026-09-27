@@ -313,9 +313,18 @@ attendre de sélection précise à chaque étape (même mandat que pour les Phas
   en exerçant le vrai code du paquet d'exemple et le vrai chemin `pluggy.load_setuptools_entrypoints`,
   à la fois au niveau pluggy nu et via `plugins.manager.get_plugin_manager()` (le chemin réel
   utilisé par `s1mone plugin list`/`search`/`task submit`).
-- **Suite immédiate** : catégorie C terminée (C.1, C.2, C.3). Plus aucune tâche connue dans
-  `NEXT_STEPS.md` — relire le fichier avec l'utilisateur pour identifier une éventuelle
-  catégorie D, ou considérer le mandat "tous et plus encore" comme rempli.
+- **Suite immédiate** : catégorie C terminée (C.1, C.2, C.3). Catégorie D ("et plus encore",
+  au-delà de NEXT_STEPS.md) démarrée sur reconfirmation explicite du mandat maximal :
+  - **D.1 — Tableau de bord d'usage : faite, testée (8 + 5 + 2 = 15 nouveaux tests :
+    `test_stats.py`, `test_web_stats.py`, `test_cli_stats.py`).** `core/stats.py` (nouveau,
+    zéro nouvelle table) : `usage_stats()` agrège tâches par statut + taux de succès, mémoire par
+    niveau, cache (valides/expirées), projets, notifications (total/non lues), tâches récurrentes
+    (total/actives). CLI `s1mone stats` (tableaux Rich). Web `/stats` + `/api/stats` +
+    `/partials/stats` (rafraîchi toutes les 15s comme le dashboard), lien de nav "Statistiques"
+    ajouté à `base.html`. Distinct de `s1mone status` (diagnostic santé) : `stats` répond à
+    "combien ?", pas "est-ce que ça va ?". Suite complète : **412/412 passed**.
+  - Reste à faire pour la catégorie D : D.2 (recherche plein texte dans `/memory`), D.3
+    (consommer le niveau mémoire `session`, seul niveau encore réservé — voir DECISIONS.md D7).
 
 **Important pour l'utilisateur** : `S1MONE_WEB_PASSWORD` doit être choisi et défini par
 l'utilisateur lui-même dans son `.env` sur sa machine réelle (secret que l'agent ne peut pas

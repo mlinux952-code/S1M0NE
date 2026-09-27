@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Statistiques{% endblock %}
+{% block content %}
+<h1>Statistiques d'usage</h1>
+<p class="hint">
+    Instantané de ce que S1M0NE contient et fait — tâches, mémoire, cache de recherche, projets,
+    notifications, tâches récurrentes. Différent de <a href="/">Dashboard</a> (santé/ressources
+    système) : ici, ce sont des compteurs d'usage, rafraîchis toutes les 15s.
+</p>
+
+<section id="stats-panel"
+         hx-get="/partials/stats"
+         hx-trigger="load, every 15s"
+         hx-swap="innerHTML">
+    <p class="muted">Chargement…</p>
+</section>
+{% endblock %}

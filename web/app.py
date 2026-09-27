@@ -41,6 +41,7 @@ from core.config import settings
 from core.db import init_db
 from core.logging_setup import get_logger
 from core.shell_runner import run_command as run_shell_command
+from core.stats import usage_stats
 from core.timeutil import format_timestamp
 from plugins.manager import list_plugins
 from system.healthcheck import run_all_checks
@@ -501,6 +502,25 @@ def create_app() -> FastAPI:
     @app.get("/api/schedules")
     def api_schedules_list() -> dict[str, Any]:
         return {"schedules": scheduler.list_schedules()}
+
+    @app.get("/api/stats")
+    def api_stats() -> dict[str, Any]:
+        """Instantané d'usage (tâches, mémoire, cache, projets, notifications, planifications) —
+        lecture seule, aucune donnée sensible (voir core/stats.py)."""
+        return usage_stats()
+
+    @app.get("/partials/stats", response_class=HTMLResponse)
+    def partial_stats(request: Request) -> HTMLResponse:
+        stats = usage_stats()
+        return templates.TemplateResponse(
+            request,
+            "partials/stats.html",
+            {"stats": stats, "generated_display": format_timestamp(stats["generated_at"])},
+        )
+
+    @app.get("/stats", response_class=HTMLResponse)
+    def stats_page(request: Request) -> HTMLResponse:
+        return templates.TemplateResponse(request, "stats.html", {})
 
     @app.get("/memory", response_class=HTMLResponse)
     def memory_page(request: Request) -> HTMLResponse:

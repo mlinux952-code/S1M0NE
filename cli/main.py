@@ -3,6 +3,7 @@ cli/main.py — Terminal Gateway de S1M0NE (Phase 1 : commandes minimales).
 
 Commandes disponibles :
     s1mone status   -> diagnostic complet (config, sqlite, disque, ressources)
+    s1mone stats    -> instantané d'usage (tâches, mémoire, cache, projets, notifications ...)
     s1mone system   -> aperçu CPU/RAM/swap/disque en direct
     s1mone version  -> version + infos plateforme
 
@@ -86,6 +87,7 @@ app.add_typer(schedule_app, name="schedule")
 
 _COMMANDS_NEEDING_DB = {
     "status",
+    "stats",
     "task",
     "search",
     "chat",
@@ -157,6 +159,50 @@ def status() -> None:
 
     if not report["overall_ok"]:
         raise typer.Exit(code=1)
+
+
+@app.command()
+def stats() -> None:
+    """Instantané d'usage : tâches, mémoire, cache de recherche, projets, notifications,
+    tâches récurrentes (compteurs uniquement, lecture seule — voir core/stats.py).
+
+    Différent de 's1mone status' (diagnostic de bonne santé) : ici, ce sont des compteurs
+    d'usage, pas un contrôle de configuration/ressources."""
+    from core.stats import usage_stats
+
+    data = usage_stats()
+
+    tasks = Table(title="Tâches")
+    tasks.add_column("Statut")
+    tasks.add_column("Nombre", justify="right")
+    for status_name, n in data["tasks"]["by_status"].items():
+        tasks.add_row(status_name, str(n))
+    tasks.add_row("[bold]Total[/bold]", f"[bold]{data['tasks']['total']}[/bold]")
+    rate = data["tasks"]["success_rate_percent"]
+    tasks.add_row("Taux de succès", f"{rate} %" if rate is not None else "—")
+    console.print(tasks)
+
+    memory_table = Table(title="Mémoire")
+    memory_table.add_column("Niveau")
+    memory_table.add_column("Nombre", justify="right")
+    for level, n in data["memory"]["by_level"].items():
+        memory_table.add_row(level, str(n))
+    memory_table.add_row("[bold]Total[/bold]", f"[bold]{data['memory']['total']}[/bold]")
+    console.print(memory_table)
+
+    other = Table(title="Cache, projets, notifications, tâches récurrentes")
+    other.add_column("Indicateur")
+    other.add_column("Valeur", justify="right")
+    other.add_row("Cache — total / valides / expirées",
+                  f"{data['cache']['total']} / {data['cache']['valid']} / {data['cache']['expired']}")
+    other.add_row("Projets", str(data["projects"]["total"]))
+    other.add_row("Notifications — total / non lues",
+                  f"{data['notifications']['total']} / {data['notifications']['unread']}")
+    other.add_row("Tâches récurrentes — total / actives",
+                  f"{data['schedules']['total']} / {data['schedules']['enabled']}")
+    console.print(other)
+
+    console.print(f"[dim]Généré à : {_fmt_ts(data['generated_at'])}[/dim]")
 
 
 @app.command()
