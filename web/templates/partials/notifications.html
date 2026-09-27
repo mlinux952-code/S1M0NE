@@ -1,0 +1,46 @@
+<div
+    id="notif-bell"
+    class="notif-bell"
+    x-data="{ open: false }"
+    hx-get="/partials/notifications"
+    hx-trigger="load, every 20s"
+    hx-swap="outerHTML"
+>
+    <button type="button" class="notif-toggle" @click="open = !open" title="Notifications">
+        🔔
+        {% if unread_count > 0 %}<span class="notif-count">{{ unread_count }}</span>{% endif %}
+    </button>
+    <div class="notif-dropdown" x-show="open" @click.outside="open = false" x-cloak>
+        <div class="notif-dropdown-header">
+            <span>Notifications</span>
+            {% if unread_count > 0 %}
+            <button
+                type="button"
+                class="notif-mark-all"
+                hx-post="/partials/notifications/read-all"
+                hx-target="#notif-bell"
+                hx-swap="outerHTML"
+            >Tout marquer lu</button>
+            {% endif %}
+        </div>
+        {% if notifications %}
+        <ul class="notif-list">
+            {% for n in notifications %}
+            <li
+                class="notif-item notif-{{ n.level }} {{ 'notif-unread' if not n.read else '' }}"
+                {% if not n.read %}
+                hx-post="/partials/notifications/{{ n.id }}/read"
+                hx-target="#notif-bell"
+                hx-swap="outerHTML"
+                {% endif %}
+            >
+                <span class="notif-message">{{ n.message }}</span>
+                <span class="notif-time">{{ n.created_display }}</span>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <div class="notif-empty">Aucune notification.</div>
+        {% endif %}
+    </div>
+</div>

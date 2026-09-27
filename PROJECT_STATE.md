@@ -240,9 +240,19 @@ attendre de sélection précise à chaque étape (même mandat que pour les Phas
   avant toute connexion (pas juste "à la connexion") : `loginctl enable-linger $USER`, mentionné
   dans le message de sortie du script plutôt qu'automatisé (modifie un réglage global du compte
   utilisateur, décision qui doit rester explicite).
-- **Suite immédiate** : évaluation des pistes B (tâches récurrentes, assistant agentique/function
-  calling, notifications, mémoire "project") et C (page web mémoire, tri/pagination recherche,
-  paquet pip d'exemple) selon l'ordre de `NEXT_STEPS.md`.
+## PHASE POST-PLAN — Nouvelles capacités (NEXT_STEPS.md §B)
+
+- **B.3 — Notifications locales : faite, testée (12 tests dans `tests/test_notifications.py` +
+  `tests/test_tasks.py` + 8 dans `tests/test_web_notifications.py`).** Nouvelle table
+  `notifications` (core/db.py), module `core/notifications.py`. `tasks/manager.py` crée
+  automatiquement une notification à chaque fin de tâche (succès/échec) — jamais bloquant (une
+  notification cassée ne fait jamais échouer la tâche elle-même, testé explicitement). CLI
+  `s1mone notify list/read/clear`. Dashboard web : cloche avec compteur non-lues (htmx, polling
+  20s), liste déroulante, clic pour marquer lu. Best-effort desktop (`notify-send` si présent,
+  échoue silencieusement sinon).
+- **Suite immédiate** : B.4 (mémoire "project"), B.1 (tâches récurrentes), B.2 (assistant
+  agentique/function calling — le plus sensible côté sécurité, à traiter avec le même soin que la
+  Phase 9), puis C (page web mémoire, tri/pagination recherche, paquet pip d'exemple).
 
 **Important pour l'utilisateur** : `S1MONE_WEB_PASSWORD` doit être choisi et défini par
 l'utilisateur lui-même dans son `.env` sur sa machine réelle (secret que l'agent ne peut pas

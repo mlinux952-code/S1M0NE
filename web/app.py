@@ -28,7 +28,7 @@ from ai.gateway import available_providers
 from ai.gateway import converse as ai_converse
 from ai.gateway import get_conversation_history, reset_conversation
 from connectors.engine import available_connectors, search_all
-from core import auth, permissions
+from core import auth, notifications, permissions
 from core.config import settings
 from core.db import init_db
 from core.logging_setup import get_logger
@@ -280,6 +280,52 @@ def create_app() -> FastAPI:
             "connectors": [c["name"] for c in available_connectors()],
             "task_types": available_types(),
         }
+
+    @app.get("/api/notifications")
+    def api_notifications_list(unread_only: bool = False, limit: int = 50) -> dict[str, Any]:
+        return {
+            "notifications": notifications.list_notifications(unread_only=unread_only, limit=limit),
+            "unread_count": notifications.count_unread(),
+        }
+
+    @app.post("/api/notifications/{notification_id}/read")
+    def api_notifications_read(notification_id: str) -> dict[str, Any]:
+        ok = notifications.mark_read(notification_id)
+        if not ok:
+            raise HTTPException(
+                status_code=404, detail=f"Notification introuvable : {notification_id}"
+            )
+        return {"ok": True}
+
+    @app.post("/api/notifications/read-all")
+    def api_notifications_read_all() -> dict[str, Any]:
+        return {"ok": True, "count": notifications.mark_all_read()}
+
+    def _notifications_context() -> dict[str, Any]:
+        items = notifications.list_notifications(limit=10)
+        for n in items:
+            n["created_display"] = format_timestamp(n.get("created_at"))
+        return {"notifications": items, "unread_count": notifications.count_unread()}
+
+    @app.get("/partials/notifications", response_class=HTMLResponse)
+    def partial_notifications(request: Request) -> HTMLResponse:
+        return templates.TemplateResponse(
+            request, "partials/notifications.html", _notifications_context()
+        )
+
+    @app.post("/partials/notifications/read-all", response_class=HTMLResponse)
+    def partial_notifications_read_all(request: Request) -> HTMLResponse:
+        notifications.mark_all_read()
+        return templates.TemplateResponse(
+            request, "partials/notifications.html", _notifications_context()
+        )
+
+    @app.post("/partials/notifications/{notification_id}/read", response_class=HTMLResponse)
+    def partial_notifications_read(request: Request, notification_id: str) -> HTMLResponse:
+        notifications.mark_read(notification_id)
+        return templates.TemplateResponse(
+            request, "partials/notifications.html", _notifications_context()
+        )
 
     @app.get("/api/tasks")
     def api_tasks_list(status: str | None = None, limit: int = 50) -> dict[str, Any]:

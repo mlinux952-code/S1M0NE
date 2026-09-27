@@ -20,6 +20,13 @@
             <span class="disabled" title="Disponible en CLI : s1mone memory list/show/forget (page web à venir)">Mémoire</span>
             <span class="disabled" title="Bientôt">Paramètres</span>
             {% if auth_enabled() %}<a href="/logout">Déconnexion</a>{% endif %}
+            <div
+                id="notif-bell"
+                class="notif-bell"
+                hx-get="/partials/notifications"
+                hx-trigger="load, every 20s"
+                hx-swap="outerHTML"
+            ></div>
         </nav>
     </header>
     <main class="content">

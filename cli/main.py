@@ -32,6 +32,7 @@ from core import memory as memory_module
 from core import permissions
 from core.config import settings
 from core.db import backup_db, list_backups
+from core import notifications as notifications_module
 from core.shell_runner import run_command as run_shell_command
 from core.timeutil import format_timestamp
 from plugins.manager import list_plugins
@@ -69,8 +70,11 @@ app.add_typer(plugin_app, name="plugin")
 backup_app = typer.Typer(help="Sauvegarde de la base SQLite (mémoire, tâches, cache).")
 app.add_typer(backup_app, name="backup")
 
+notify_app = typer.Typer(help="Notifications locales (fin de tâche, erreurs).")
+app.add_typer(notify_app, name="notify")
 
-_COMMANDS_NEEDING_DB = {"status", "task", "search", "chat", "memory", "backup"}
+
+_COMMANDS_NEEDING_DB = {"status", "task", "search", "chat", "memory", "backup", "notify"}
 
 
 @app.callback()
@@ -662,6 +666,60 @@ def backup_list() -> None:
     console.print(table)
     if not backups:
         console.print(f"[grey58]Aucune sauvegarde. Dossier : {settings.backups_dir}[/grey58]")
+
+
+@notify_app.command("list")
+def notify_list(
+    unread_only: bool = typer.Option(
+        False, "--unread-only", help="N'affiche que les notifications non lues."
+    ),
+    limit: int = typer.Option(20, help="Nombre maximum de notifications affichées."),
+) -> None:
+    """Liste les notifications (les plus récentes d'abord)."""
+    items = notifications_module.list_notifications(unread_only=unread_only, limit=limit)
+    table = Table(title="S1M0NE — notifications")
+    table.add_column("État")
+    table.add_column("Niveau")
+    table.add_column("Message", max_width=70)
+    table.add_column("Créée à")
+    level_colors = {"success": "green", "error": "red", "info": "cyan"}
+    for n in items:
+        state = "[grey58]lue[/grey58]" if n["read"] else "[bold]non lue[/bold]"
+        color = level_colors.get(n["level"], "white")
+        table.add_row(state, f"[{color}]{n['level']}[/{color}]", n["message"], _fmt_ts(n["created_at"]))
+    console.print(table)
+    if not items:
+        console.print("[grey58]Aucune notification.[/grey58]")
+
+
+@notify_app.command("read")
+def notify_read(
+    notification_id: Optional[str] = typer.Argument(
+        None, help="Id de la notification à marquer comme lue (voir 's1mone notify list')."
+    ),
+    all_: bool = typer.Option(False, "--all", help="Marque toutes les notifications comme lues."),
+) -> None:
+    """Marque une notification (ou toutes, avec --all) comme lue."""
+    if all_:
+        n = notifications_module.mark_all_read()
+        console.print(f"[green]{n} notification(s) marquée(s) comme lue(s).[/green]")
+        return
+    if not notification_id:
+        console.print("[red]Précise un id, ou utilise --all.[/red]")
+        raise typer.Exit(code=1)
+    ok = notifications_module.mark_read(notification_id)
+    if ok:
+        console.print("[green]Notification marquée comme lue.[/green]")
+    else:
+        console.print(f"[red]Aucune notification avec l'id '{notification_id}'.[/red]")
+        raise typer.Exit(code=1)
+
+
+@notify_app.command("clear")
+def notify_clear() -> None:
+    """Supprime toutes les notifications (lues et non lues)."""
+    n = notifications_module.clear_all()
+    console.print(f"[green]{n} notification(s) supprimée(s).[/green]")
 
 
 def main() -> None:

@@ -71,6 +71,18 @@ CREATE TABLE IF NOT EXISTS schema_meta (
     key   TEXT PRIMARY KEY,
     value TEXT
 );
+
+-- Notifications locales (NEXT_STEPS.md §B.3) : évènements à porter à l'attention de
+-- l'utilisateur (fin de tâche, erreur...), consultables en CLI et affichées dans le dashboard.
+CREATE TABLE IF NOT EXISTS notifications (
+    id         TEXT PRIMARY KEY,
+    level      TEXT NOT NULL CHECK (level IN ('info','success','error')),
+    message    TEXT NOT NULL,
+    task_id    TEXT,
+    created_at REAL NOT NULL,
+    read       INTEGER NOT NULL DEFAULT 0 CHECK (read IN (0,1))
+);
+CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(read);
 """
 
 SCHEMA_VERSION = "1"
@@ -125,7 +137,7 @@ def database_health() -> dict[str, Any]:
                     "SELECT name FROM sqlite_master WHERE type='table'"
                 ).fetchall()
             }
-            expected = {"tasks", "memory", "cache", "projects", "schema_meta"}
+            expected = {"tasks", "memory", "cache", "projects", "schema_meta", "notifications"}
             missing = expected - tables
             return {
                 "ok": not missing,

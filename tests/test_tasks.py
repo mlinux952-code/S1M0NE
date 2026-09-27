@@ -104,3 +104,39 @@ def test_max_concurrent_tasks_matches_config_for_normal_level():
     # Sur cette machine de test, le niveau est presque toujours NORMAL.
     n = max_concurrent_tasks()
     assert n >= 0
+
+
+def test_execute_task_success_creates_notification():
+    from core import notifications
+
+    task_id = submit_task("sleep", {"seconds": 0})
+    asyncio.run(execute_task(task_id))
+    items = notifications.list_notifications()
+    assert len(items) == 1
+    assert items[0]["level"] == "success"
+    assert items[0]["task_id"] == task_id
+
+
+def test_execute_task_failure_creates_error_notification():
+    from core import notifications
+
+    # "sleep" avec un paramètre non numérique fait planter le handler -> FAILED.
+    task_id = submit_task("sleep", {"seconds": "pas-un-nombre"})
+    asyncio.run(execute_task(task_id))
+    assert get_task(task_id)["status"] == "FAILED"
+    items = notifications.list_notifications()
+    assert len(items) == 1
+    assert items[0]["level"] == "error"
+    assert items[0]["task_id"] == task_id
+
+
+def test_notification_failure_never_breaks_task_execution(monkeypatch):
+    import tasks.manager as manager_module
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("notification cassée")
+
+    monkeypatch.setattr(manager_module.notifications, "notify", _boom)
+    task_id = submit_task("sleep", {"seconds": 0})
+    asyncio.run(execute_task(task_id))  # ne doit jamais lever malgré la notification cassée
+    assert get_task(task_id)["status"] == "SUCCESS"

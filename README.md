@@ -217,6 +217,23 @@ Pour un démarrage dès le boot, avant toute connexion (facultatif, sans droits 
 `loginctl enable-linger $USER`. Si `systemd` n'est pas disponible sur ta machine, le script
 l'indique clairement et propose une alternative (`cron @reboot`).
 
+## Notifications (B.3)
+
+Quand une tâche se termine (succès ou échec), une notification est créée automatiquement :
+
+```bash
+s1mone notify list                  # les plus récentes d'abord
+s1mone notify list --unread-only
+s1mone notify read <id>             # marque une notification comme lue
+s1mone notify read --all
+s1mone notify clear                 # supprime tout l'historique
+```
+
+Le dashboard web affiche aussi une cloche 🔔 (en haut à droite) avec le nombre de notifications
+non lues, rafraîchie automatiquement. En complément, une notification bureau (`notify-send`) est
+tentée si disponible sur la machine — best-effort, sans jamais bloquer si absente (ex. service
+`systemd --user` sans session graphique).
+
 ## Plugins (Phase 8)
 
 S1M0NE s'étend sans jamais toucher à son code central : dépose un fichier `.py` dans

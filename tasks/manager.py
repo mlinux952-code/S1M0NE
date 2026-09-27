@@ -23,7 +23,7 @@ import asyncio
 import json
 from typing import Any
 
-from core import db
+from core import db, notifications
 from core.config import settings
 from core.logging_setup import get_logger
 from system.monitor import get_snapshot, resource_level
@@ -107,6 +107,7 @@ async def execute_task(task_id: str) -> None:
         result = await handler(parameters)
         db.mark_task_success(task_id, result)
         logger.info(f"Tâche {task_id} ({task['type']}) terminée avec succès.")
+        _notify_safely(f"Tâche '{task['type']}' terminée avec succès.", "success", task_id)
     except asyncio.CancelledError:
         db.mark_task_cancelled(task_id)
         logger.warning(f"Tâche {task_id} ({task['type']}) annulée pendant son exécution.")
@@ -114,8 +115,18 @@ async def execute_task(task_id: str) -> None:
     except Exception as exc:  # noqa: BLE001 - toute erreur de handler doit être capturée et stockée
         db.mark_task_failed(task_id, str(exc))
         logger.error(f"Tâche {task_id} ({task['type']}) échouée : {exc}")
+        _notify_safely(f"Tâche '{task['type']}' échouée : {exc}", "error", task_id)
     finally:
         _running_asyncio_tasks.pop(task_id, None)
+
+
+def _notify_safely(message: str, level: str, task_id: str) -> None:
+    """Une notification manquée ne doit jamais faire échouer une tâche par ailleurs réussie
+    (NEXT_STEPS.md §B.3) : toute erreur ici est journalée, jamais propagée."""
+    try:
+        notifications.notify(message, level=level, task_id=task_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"Notification non créée pour la tâche {task_id} : {exc}")
 
 
 async def run_pending_tasks(limit: int | None = None) -> int:
