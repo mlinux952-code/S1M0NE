@@ -184,10 +184,12 @@ Phase 1+).
   est injecté au début de chaque conversation — corrige le comportement observé où l'assistant
   ne savait pas ce qu'était S1M0NE (aucun contexte sur lui-même sans cela). Personnalisable en
   écrasant la clé `ai_system_prompt` (niveau `persistent`) sans toucher au code.
-- Les niveaux `session` et `project` restent réservés (pas encore consommés) : `session` pour un
-  futur état propre à chaque onglet navigateur/terminal, `project` pour un futur lien avec la
-  table `projects`. Pas d'UI dédiée de navigation dans la mémoire pour l'instant (uniquement
-  consommée en interne par le chat) — pourrait arriver plus tard si le besoin se précise.
+- Le niveau `project` est désormais réellement consommé (B.4, `core/projects.py` + CLI/web
+  `project ...`) : chaque projet a sa propre mémoire scopée (`project_id` obligatoire), supprimée
+  automatiquement à la suppression du projet. Le niveau `session` reste seul réservé (pas encore
+  consommé) : pensé pour un futur état propre à chaque onglet navigateur/terminal. Pas d'UI
+  dédiée de navigation dans la mémoire pour le niveau `session` pour l'instant — pourrait arriver
+  plus tard si le besoin se précise (voir C.1 pour l'UI déjà livrée sur les niveaux existants).
 
 ## D13 — Plugins tiers (Phase 8)
 
