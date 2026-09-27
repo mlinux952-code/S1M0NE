@@ -217,6 +217,24 @@ Pour un démarrage dès le boot, avant toute connexion (facultatif, sans droits 
 `loginctl enable-linger $USER`. Si `systemd` n'est pas disponible sur ta machine, le script
 l'indique clairement et propose une alternative (`cron @reboot`).
 
+## Tâches récurrentes (B.1)
+
+Répète un type de tâche connu toutes les N secondes/minutes/heures/jours :
+
+```bash
+s1mone schedule create backup --interval 1d      # une sauvegarde SQLite automatique par jour
+s1mone schedule create system_snapshot --interval 1h   # ex: un instantané ressources chaque heure
+s1mone schedule list
+s1mone schedule disable <id>    # suspend sans supprimer
+s1mone schedule enable <id>
+s1mone schedule delete <id> --yes
+```
+
+Le tick de planification tourne dans le worker de tâches existant (`s1mone web`, ou
+`s1mone task worker`) : pas de second processus. Intervalles acceptés : `30s`, `5m`, `2h`, `1d`,
+ou un nombre nu de secondes. Pas de syntaxe cron complète (ex. "tous les lundis à 9h") — voir
+DECISIONS.md §D17 pour le compromis assumé.
+
 ## Projets (B.4)
 
 Regroupe de la mémoire (pour l'instant : la conversation IA) sous un projet précis, séparée de la

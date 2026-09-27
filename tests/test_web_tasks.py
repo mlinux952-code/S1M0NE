@@ -81,3 +81,14 @@ def test_background_worker_actually_processes_submitted_task():
                 break
             time.sleep(0.3)
         assert status == "SUCCESS"
+
+
+def test_api_schedules_endpoint_lists_created_schedules(tmp_path, monkeypatch):
+    monkeypatch.setenv("S1MONE_DATA_DIR", str(tmp_path))
+    with TestClient(app) as client:
+        from core import scheduler
+
+        scheduler.create_schedule("sleep", interval_seconds=60)
+        r = client.get("/api/schedules")
+        assert r.status_code == 200
+        assert len(r.json()["schedules"]) == 1

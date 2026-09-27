@@ -75,3 +75,14 @@ async def _handle_system_snapshot(parameters: dict[str, Any]) -> dict[str, Any]:
     from system.monitor import get_snapshot  # import local pour éviter tout cycle d'import
 
     return get_snapshot().as_dict()
+
+
+@register("backup")
+async def _handle_backup(parameters: dict[str, Any]) -> dict[str, Any]:
+    """Sauvegarde la base SQLite (core.db.backup_db, Phase A.2) — permet une sauvegarde
+    automatique récurrente via 's1mone schedule create backup --interval 1d' (NEXT_STEPS §B.1),
+    sans dupliquer la logique déjà utilisée par 's1mone backup create' en CLI."""
+    from core.db import backup_db  # import local, même pattern que system_snapshot ci-dessus
+
+    path = backup_db()
+    return {"backup_path": str(path)}

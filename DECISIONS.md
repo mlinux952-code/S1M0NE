@@ -305,6 +305,26 @@ Phase 1+).
 
 ---
 
+## D17 — Tâches récurrentes (post-plan-initial, NEXT_STEPS.md §B.1)
+
+- **Décision : intervalle simple ("30s", "5m", "2h", "1d") plutôt qu'une syntaxe cron complète.**
+  `[DECIDED]` Une syntaxe cron réelle nécessiterait soit de l'écrire à la main (risque de bugs sur
+  les cas limites : fuseaux horaires, jours du mois...), soit d'ajouter une dépendance
+  (`croniter`) pour un besoin personnel qui se résume presque toujours à "répéter toutes les N
+  minutes/heures/jours". Compromis assumé : pas d'équivalent direct à "tous les lundis à 9h" —
+  si ce besoin apparaît un jour, `croniter` (pure Python, léger) sera reconsidéré à ce moment-là,
+  pas anticipé maintenant (YAGNI).
+- **Aucune nouvelle boucle asyncio : le tick de planification est greffé sur le worker de tâches
+  existant** (`tasks/manager.py worker_loop`), pas un second processus/thread. Une échéance créée
+  passe par le chemin normal d'une tâche (file d'attente, limites de ressources du Resource
+  Manager, notifications B.3 incluses) — aucune logique d'exécution dupliquée.
+- **Une planification dont le type de tâche a disparu se désactive automatiquement** (avec
+  avertissement journalisé) plutôt que d'échouer indéfiniment au même tick, à l'identique du
+  traitement déjà appliqué aux notifications ratées (B.3) et à la Phase 8 (plugin qui disparaît) :
+  aucune erreur silencieuse en boucle infinie.
+
+---
+
 ## Récapitulatif de la stack retenue pour la Phase 1 (fondation)
 
 ```text

@@ -83,6 +83,21 @@ CREATE TABLE IF NOT EXISTS notifications (
     read       INTEGER NOT NULL DEFAULT 0 CHECK (read IN (0,1))
 );
 CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(read);
+
+-- Planifications récurrentes (NEXT_STEPS.md §B.1) : répète un type de tâche connu toutes les N
+-- secondes, en réutilisant le Task Manager existant (une échéance = une tâche QUEUED normale).
+CREATE TABLE IF NOT EXISTS schedules (
+    id               TEXT PRIMARY KEY,
+    task_type        TEXT NOT NULL,
+    parameters       TEXT,
+    interval_seconds INTEGER NOT NULL,
+    enabled          INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0,1)),
+    next_run_at      REAL NOT NULL,
+    last_run_at      REAL,
+    last_task_id     TEXT,
+    created_at       REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_schedules_enabled_next_run ON schedules(enabled, next_run_at);
 """
 
 SCHEMA_VERSION = "1"
@@ -137,7 +152,15 @@ def database_health() -> dict[str, Any]:
                     "SELECT name FROM sqlite_master WHERE type='table'"
                 ).fetchall()
             }
-            expected = {"tasks", "memory", "cache", "projects", "schema_meta", "notifications"}
+            expected = {
+                "tasks",
+                "memory",
+                "cache",
+                "projects",
+                "schema_meta",
+                "notifications",
+                "schedules",
+            }
             missing = expected - tables
             return {
                 "ok": not missing,

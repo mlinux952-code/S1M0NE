@@ -39,10 +39,12 @@ from core.timeutil import format_timestamp
 from plugins.manager import list_plugins
 from system.healthcheck import run_all_checks
 from system.monitor import get_platform_info, get_snapshot, resource_level
+from core import scheduler as scheduler_module
 from tasks.manager import (
     cancel_task,
     get_task,
     list_tasks,
+    run_due_schedules_safely,
     run_pending_tasks,
     submit_task,
     worker_loop,
@@ -77,8 +79,21 @@ app.add_typer(notify_app, name="notify")
 project_app = typer.Typer(help="Projets (regroupent de la mémoire dédiée, ex. une conversation IA par projet).")
 app.add_typer(project_app, name="project")
 
+schedule_app = typer.Typer(help="Tâches récurrentes : répète un type de tâche toutes les N secondes/minutes/heures/jours.")
+app.add_typer(schedule_app, name="schedule")
 
-_COMMANDS_NEEDING_DB = {"status", "task", "search", "chat", "memory", "backup", "notify", "project"}
+
+_COMMANDS_NEEDING_DB = {
+    "status",
+    "task",
+    "search",
+    "chat",
+    "memory",
+    "backup",
+    "notify",
+    "project",
+    "schedule",
+}
 
 
 @app.callback()
@@ -499,7 +514,10 @@ def task_worker(
 ) -> None:
     """Démarre un worker de tâches en CLI (utile sans lancer l'interface web)."""
     if once:
+        scheduled = run_due_schedules_safely()
         processed = asyncio.run(run_pending_tasks())
+        if scheduled:
+            console.print(f"{scheduled} tâche(s) créée(s) par une planification arrivée à échéance.")
         console.print(f"{processed} tâche(s) traitée(s).")
         return
 
@@ -773,6 +791,112 @@ def project_delete(
         raise typer.Exit(code=0)
     projects_module.delete_project(project["id"], delete_memory=not keep_memory)
     console.print(f"[yellow]Projet supprimé : {project['name']}[/yellow]")
+
+
+@schedule_app.command("create")
+def schedule_create(
+    task_type: str = typer.Argument(
+        ..., help=f"Type de tâche à répéter. Disponibles : {', '.join(available_types())}"
+    ),
+    interval: str = typer.Option(
+        ..., "--interval", help="Fréquence : '30s', '5m', '2h', '1d', ou un nombre de secondes."
+    ),
+    param: list[str] = typer.Option(
+        [], "--param", help="Paramètre au format clé=valeur (répétable)."
+    ),
+    run_now: bool = typer.Option(
+        False, "--run-now", help="Crée aussi une première exécution immédiate."
+    ),
+) -> None:
+    """Planifie l'exécution récurrente d'un type de tâche."""
+    parameters: dict[str, str] = {}
+    for item in param:
+        if "=" not in item:
+            console.print(f"[red]Paramètre invalide (attendu clé=valeur) : {item}[/red]")
+            raise typer.Exit(code=1)
+        key, value = item.split("=", 1)
+        parameters[key] = value
+
+    try:
+        seconds = scheduler_module.parse_interval(interval)
+        schedule_id = scheduler_module.create_schedule(
+            task_type, parameters, interval_seconds=seconds, run_immediately=run_now
+        )
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=1) from exc
+
+    console.print(f"[green]Planification créée :[/green] {schedule_id} (toutes les {interval})")
+
+
+@schedule_app.command("list")
+def schedule_list() -> None:
+    """Liste toutes les planifications."""
+    items = scheduler_module.list_schedules()
+    table = Table(title="S1M0NE — planifications")
+    table.add_column("Id")
+    table.add_column("Type")
+    table.add_column("Intervalle (s)")
+    table.add_column("Active")
+    table.add_column("Prochaine échéance")
+    table.add_column("Dernière exécution")
+    for s in items:
+        active = "[green]oui[/green]" if s["enabled"] else "[grey58]non[/grey58]"
+        table.add_row(
+            s["id"],
+            s["task_type"],
+            str(s["interval_seconds"]),
+            active,
+            _fmt_ts(s["next_run_at"]),
+            _fmt_ts(s["last_run_at"]),
+        )
+    console.print(table)
+    if not items:
+        console.print("[grey58]Aucune planification.[/grey58]")
+
+
+@schedule_app.command("show")
+def schedule_show(schedule_id: str = typer.Argument(..., help="Id de la planification.")) -> None:
+    """Affiche le détail d'une planification."""
+    schedule = scheduler_module.get_schedule(schedule_id)
+    if schedule is None:
+        console.print(f"[red]Planification introuvable : {schedule_id}[/red]")
+        raise typer.Exit(code=1)
+    console.print_json(json.dumps(schedule, ensure_ascii=False))
+
+
+@schedule_app.command("enable")
+def schedule_enable(schedule_id: str = typer.Argument(..., help="Id de la planification.")) -> None:
+    """Réactive une planification désactivée."""
+    if not scheduler_module.set_enabled(schedule_id, True):
+        console.print(f"[red]Planification introuvable : {schedule_id}[/red]")
+        raise typer.Exit(code=1)
+    console.print("[green]Planification réactivée.[/green]")
+
+
+@schedule_app.command("disable")
+def schedule_disable(schedule_id: str = typer.Argument(..., help="Id de la planification.")) -> None:
+    """Désactive une planification sans la supprimer (les échéances passées ne sont pas rattrapées)."""
+    if not scheduler_module.set_enabled(schedule_id, False):
+        console.print(f"[red]Planification introuvable : {schedule_id}[/red]")
+        raise typer.Exit(code=1)
+    console.print("[yellow]Planification désactivée.[/yellow]")
+
+
+@schedule_app.command("delete")
+def schedule_delete(
+    schedule_id: str = typer.Argument(..., help="Id de la planification."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Ne pas demander de confirmation."),
+) -> None:
+    """Supprime définitivement une planification."""
+    if scheduler_module.get_schedule(schedule_id) is None:
+        console.print(f"[red]Planification introuvable : {schedule_id}[/red]")
+        raise typer.Exit(code=1)
+    if not yes and not typer.confirm("Supprimer définitivement cette planification ?"):
+        console.print("[grey58]Annulé.[/grey58]")
+        raise typer.Exit(code=0)
+    scheduler_module.delete_schedule(schedule_id)
+    console.print("[yellow]Planification supprimée.[/yellow]")
 
 
 @notify_app.command("list")

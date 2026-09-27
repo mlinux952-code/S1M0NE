@@ -1,6 +1,7 @@
 """Tests du Task Manager (Phase 3)."""
 
 import asyncio
+from pathlib import Path
 
 import pytest
 
@@ -140,3 +141,79 @@ def test_notification_failure_never_breaks_task_execution(monkeypatch):
     task_id = submit_task("sleep", {"seconds": 0})
     asyncio.run(execute_task(task_id))  # ne doit jamais lever malgré la notification cassée
     assert get_task(task_id)["status"] == "SUCCESS"
+
+
+def test_worker_loop_creates_and_executes_due_scheduled_tasks():
+    from core import scheduler
+
+    schedule_id = scheduler.create_schedule(
+        "sleep", parameters={"seconds": 0}, interval_seconds=3600, run_immediately=True
+    )
+
+    async def scenario():
+        stop_event = asyncio.Event()
+
+        async def stopper():
+            await asyncio.sleep(0.3)
+            stop_event.set()
+
+        await asyncio.gather(
+            manager_module.worker_loop(interval_seconds=0.05, stop_event=stop_event), stopper()
+        )
+
+    import tasks.manager as manager_module
+
+    asyncio.run(scenario())
+
+    sched = scheduler.get_schedule(schedule_id)
+    assert sched["last_task_id"] is not None
+    task = get_task(sched["last_task_id"])
+    assert task["status"] == "SUCCESS"
+
+
+def test_worker_loop_schedule_error_never_stops_the_worker(monkeypatch):
+    import tasks.manager as manager_module
+
+    def _boom():
+        raise RuntimeError("planification cassée")
+
+    monkeypatch.setattr(manager_module.scheduler, "run_due_schedules", _boom)
+    task_id = submit_task("sleep", {"seconds": 0})
+
+    async def scenario():
+        stop_event = asyncio.Event()
+
+        async def stopper():
+            await asyncio.sleep(0.2)
+            stop_event.set()
+
+        await asyncio.gather(
+            manager_module.worker_loop(interval_seconds=0.05, stop_event=stop_event), stopper()
+        )
+
+    asyncio.run(scenario())
+    assert get_task(task_id)["status"] == "SUCCESS"  # le worker a continué malgré l'erreur
+
+
+def test_backup_task_type_creates_a_real_backup_file(tmp_path, monkeypatch):
+    from core.config import Settings
+
+    backups_dir = tmp_path / "backups"
+    # `backups_dir` est une property calculée (pas un simple attribut) : on la remplace au niveau
+    # de la classe pour la durée du test, afin de ne jamais écrire dans data/backups/ du vrai
+    # dépôt pendant les tests (même précaution que pour S1MONE_DATA_DIR ailleurs dans ce fichier).
+    monkeypatch.setattr(Settings, "backups_dir", property(lambda self: backups_dir))
+
+    task_id = submit_task("backup", {})
+    asyncio.run(execute_task(task_id))
+
+    task = get_task(task_id)
+    assert task["status"] == "SUCCESS"
+    import json as _json
+
+    result = _json.loads(task["result"])
+    assert Path(result["backup_path"]).exists()
+
+
+def test_backup_task_type_is_registered():
+    assert "backup" in available_types()

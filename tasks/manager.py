@@ -23,7 +23,7 @@ import asyncio
 import json
 from typing import Any
 
-from core import db, notifications
+from core import db, notifications, scheduler
 from core.config import settings
 from core.logging_setup import get_logger
 from system.monitor import get_snapshot, resource_level
@@ -120,6 +120,17 @@ async def execute_task(task_id: str) -> None:
         _running_asyncio_tasks.pop(task_id, None)
 
 
+def run_due_schedules_safely() -> int:
+    """Crée les tâches dues (NEXT_STEPS.md §B.1). Une erreur ici ne doit jamais arrêter le worker
+    de tâches lui-même (même principe que _notify_safely juste en dessous). Public : réutilisé
+    par 's1mone task worker --once' pour un comportement cohérent avec le mode continu."""
+    try:
+        return scheduler.run_due_schedules()
+    except Exception as exc:  # noqa: BLE001
+        logger.error(f"Erreur dans le traitement des planifications récurrentes : {exc}")
+        return 0
+
+
 def _notify_safely(message: str, level: str, task_id: str) -> None:
     """Une notification manquée ne doit jamais faire échouer une tâche par ailleurs réussie
     (NEXT_STEPS.md §B.3) : toute erreur ici est journalée, jamais propagée."""
@@ -154,6 +165,7 @@ async def worker_loop(interval_seconds: float = 2.0, stop_event: asyncio.Event |
     logger.info("Task worker démarré.")
     while stop_event is None or not stop_event.is_set():
         try:
+            run_due_schedules_safely()
             await run_pending_tasks()
         except Exception as exc:  # noqa: BLE001
             logger.error(f"Erreur dans le worker de tâches : {exc}")

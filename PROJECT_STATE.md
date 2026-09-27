@@ -261,9 +261,17 @@ attendre de sélection précise à chaque étape (même mandat que pour les Phas
   `POST /api/chat` et `GET /api/chat/history`/`POST /api/chat/reset`, `GET /api/projects`.
   Correction de compatibilité : 5 tests CLI/web chat préexistants (mocks avec signature figée)
   mis à jour pour accepter le nouveau paramètre `project_id`.
-- **Suite immédiate** : B.1 (tâches récurrentes), B.2 (assistant agentique/function calling — le
-  plus sensible côté sécurité, à traiter avec le même soin que la Phase 9), puis C (page web
-  mémoire, tri/pagination recherche, paquet pip d'exemple).
+- **B.1 — Tâches récurrentes : faite, testée (17 tests `test_scheduler.py` + 4 ajoutés à
+  `test_tasks.py` + 1 à `test_web_tasks.py` = 22 nouveaux tests).** `core/scheduler.py` (nouvelle
+  table `schedules`) : intervalle simple ("30s"/"5m"/"2h"/"1d", pas de syntaxe cron — voir D17),
+  greffé sur le worker de tâches existant (`tasks/manager.py worker_loop`), aucune boucle
+  supplémentaire. Une planification dont le type de tâche a disparu se désactive automatiquement.
+  CLI `s1mone schedule create/list/show/enable/disable/delete`. Nouveau type de tâche `backup`
+  (connecte A.2 et B.1 : `s1mone schedule create backup --interval 1d` = sauvegarde SQLite
+  automatique quotidienne). `GET /api/schedules` côté web.
+- **Suite immédiate** : B.2 (assistant agentique/function calling — le plus sensible côté
+  sécurité, à traiter avec le même soin que la Phase 9), puis C (page web mémoire, tri/pagination
+  recherche, paquet pip d'exemple).
 
 **Important pour l'utilisateur** : `S1MONE_WEB_PASSWORD` doit être choisi et défini par
 l'utilisateur lui-même dans son `.env` sur sa machine réelle (secret que l'agent ne peut pas

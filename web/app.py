@@ -28,7 +28,7 @@ from ai.gateway import available_providers
 from ai.gateway import converse as ai_converse
 from ai.gateway import get_conversation_history, reset_conversation
 from connectors.engine import available_connectors, search_all
-from core import auth, notifications, permissions, projects
+from core import auth, notifications, permissions, projects, scheduler
 from core.config import settings
 from core.db import init_db
 from core.logging_setup import get_logger
@@ -433,6 +433,10 @@ def create_app() -> FastAPI:
     @app.get("/api/projects")
     def api_projects_list() -> dict[str, Any]:
         return {"projects": projects.list_projects()}
+
+    @app.get("/api/schedules")
+    def api_schedules_list() -> dict[str, Any]:
+        return {"schedules": scheduler.list_schedules()}
 
     @app.get("/chat", response_class=HTMLResponse)
     def chat_page(request: Request) -> HTMLResponse:
