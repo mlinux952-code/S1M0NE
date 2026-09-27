@@ -217,6 +217,13 @@ Pour un démarrage dès le boot, avant toute connexion (facultatif, sans droits 
 `loginctl enable-linger $USER`. Si `systemd` n'est pas disponible sur ta machine, le script
 l'indique clairement et propose une alternative (`cron @reboot`).
 
+## Page web Mémoire (C.1)
+
+`/memory` — jusqu'ici la mémoire (Phase 7) n'était inspectable qu'en CLI
+(`s1mone memory list/show/forget`). Même transparence côté web : filtre par niveau/projet, bouton
+"Voir" pour le contenu complet d'une entrée, bouton "Supprimer" (confirmation explicite requise).
+Rien de nouveau côté données : cette page ne fait qu'exposer `core/memory.py` déjà existant.
+
 ## Assistant agentique (B.2) — usage avancé, opt-in explicite
 
 L'assistant IA peut, sur demande explicite seulement, interroger deux outils **strictement en

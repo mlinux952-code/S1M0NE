@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Mémoire{% endblock %}
+{% block content %}
+<h1>Mémoire</h1>
+<p class="hint">
+    Transparence (Phase 7) : tout ce que S1M0NE retient de toi reste inspectable et supprimable
+    ici, rien n'est caché. Quatre niveaux : <code>temporary</code> (bloc-notes éphémère),
+    <code>session</code>, <code>project</code> (scopé à un projet précis, NEXT_STEPS §B.4) et
+    <code>persistent</code> (survit aux redémarrages — utilisé par l'historique du chat IA).
+</p>
+
+<form hx-get="/partials/memory-list" hx-target="#memory-list" hx-trigger="submit, load" hx-swap="innerHTML">
+    <label>Niveau :
+        <select name="level">
+            <option value="">tous</option>
+            {% for lvl in levels %}<option value="{{ lvl }}">{{ lvl }}</option>{% endfor %}
+        </select>
+    </label>
+    <label style="margin-left:1rem;">Projet :
+        <select name="project_id">
+            <option value="">(aucun filtre)</option>
+            {% for p in projects_list %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}
+        </select>
+    </label>
+    <button type="submit" style="margin-left:1rem;">Filtrer</button>
+</form>
+
+<div id="memory-list" style="margin-top:1rem;">
+    <p class="muted">Chargement…</p>
+</div>
+
+<div id="memory-value-viewer" style="margin-top:1.5rem;"></div>
+{% endblock %}

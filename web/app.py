@@ -13,6 +13,7 @@ Principes appliqués :
 from __future__ import annotations
 
 import asyncio
+import json
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -28,7 +29,7 @@ from ai.gateway import available_providers
 from ai.gateway import converse as ai_converse
 from ai.gateway import get_conversation_history, reset_conversation
 from connectors.engine import available_connectors, search_all
-from core import auth, notifications, permissions, projects, scheduler
+from core import auth, memory, notifications, permissions, projects, scheduler
 from core.config import settings
 from core.db import init_db
 from core.logging_setup import get_logger
@@ -439,6 +440,74 @@ def create_app() -> FastAPI:
     @app.get("/api/schedules")
     def api_schedules_list() -> dict[str, Any]:
         return {"schedules": scheduler.list_schedules()}
+
+    @app.get("/memory", response_class=HTMLResponse)
+    def memory_page(request: Request) -> HTMLResponse:
+        """Page dédiée à la mémoire (NEXT_STEPS §C.1) : jusqu'ici uniquement inspectable en CLI
+        ('s1mone memory list/show/forget', Phase 7). Transparence identique côté web : tout ce
+        que S1M0NE retient reste consultable et supprimable ici, rien n'est caché."""
+        return templates.TemplateResponse(
+            request,
+            "memory.html",
+            {"levels": memory.VALID_LEVELS, "projects_list": projects.list_projects()},
+        )
+
+    @app.get("/partials/memory-list", response_class=HTMLResponse)
+    def partial_memory_list(request: Request, level: str = "", project_id: str = "") -> HTMLResponse:
+        lvl = level or None
+        pid = project_id or None
+        error: str | None = None
+        try:
+            entries = memory.list_memory(lvl, project_id=pid)
+        except ValueError as exc:
+            entries = []
+            error = str(exc)
+        for e in entries:
+            e["created_display"] = format_timestamp(e.get("created_at"))
+        return templates.TemplateResponse(
+            request, "partials/memory_list.html", {"entries": entries, "error": error}
+        )
+
+    @app.get("/partials/memory-value", response_class=HTMLResponse)
+    def partial_memory_value(
+        request: Request, level: str = "", key: str = "", project_id: str = ""
+    ) -> HTMLResponse:
+        pid = project_id or None
+        try:
+            value = memory.recall(level, key, project_id=pid)
+        except ValueError as exc:
+            return templates.TemplateResponse(
+                request, "partials/memory_value.html", {"error": str(exc)}
+            )
+        value_json = json.dumps(value, ensure_ascii=False, indent=2)
+        return templates.TemplateResponse(
+            request,
+            "partials/memory_value.html",
+            {"level": level, "key": key, "value_json": value_json},
+        )
+
+    @app.post("/partials/memory/forget", response_class=HTMLResponse)
+    def partial_memory_forget(
+        request: Request,
+        level: str = Form(...),
+        key: str = Form(...),
+        project_id: str = Form(""),
+    ) -> HTMLResponse:
+        """Supprime une entrée puis recharge la liste COMPLÈTE (sans filtre) — simplification
+        assumée (NEXT_STEPS §C.1) : préserver le filtre exact affiché avant suppression aurait
+        exigé de le retransmettre depuis le bouton, pour un gain marginal sur une action rare."""
+        pid = project_id or None
+        error: str | None = None
+        try:
+            memory.forget(level, key, project_id=pid)
+        except ValueError as exc:
+            error = str(exc)
+        entries = memory.list_memory() if error is None else []
+        for e in entries:
+            e["created_display"] = format_timestamp(e.get("created_at"))
+        return templates.TemplateResponse(
+            request, "partials/memory_list.html", {"entries": entries, "error": error}
+        )
 
     @app.get("/chat", response_class=HTMLResponse)
     def chat_page(request: Request) -> HTMLResponse:

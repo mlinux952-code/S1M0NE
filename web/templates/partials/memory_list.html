@@ -1,0 +1,33 @@
+{% if error %}
+<p class="muted" style="color:#e05a5a;">{{ error }}</p>
+{% elif entries %}
+<table>
+    <tr><th>Niveau</th><th>Clé</th><th>Projet</th><th>Enregistrée à</th><th></th></tr>
+    {% for e in entries %}
+    <tr>
+        <td>{{ e.level }}</td>
+        <td><code>{{ e.key }}</code></td>
+        <td>{{ e.project_id or "" }}</td>
+        <td>{{ e.created_display }}</td>
+        <td>
+            <button
+                type="button"
+                hx-get="/partials/memory-value?level={{ e.level }}&key={{ e.key }}{% if e.project_id %}&project_id={{ e.project_id }}{% endif %}"
+                hx-target="#memory-value-viewer"
+                hx-swap="innerHTML"
+            >Voir</button>
+            <button
+                type="button"
+                hx-post="/partials/memory/forget"
+                hx-vals='{"level": "{{ e.level }}", "key": "{{ e.key }}"{% if e.project_id %}, "project_id": "{{ e.project_id }}"{% endif %}}'
+                hx-target="#memory-list"
+                hx-swap="innerHTML"
+                hx-confirm="Supprimer définitivement {{ e.level }}/{{ e.key }} ?"
+            >Supprimer</button>
+        </td>
+    </tr>
+    {% endfor %}
+</table>
+{% else %}
+<p class="muted">Aucune entrée pour ce filtre.</p>
+{% endif %}

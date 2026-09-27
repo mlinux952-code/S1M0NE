@@ -282,7 +282,14 @@ attendre de sélection précise à chaque étape (même mandat que pour les Phas
   cocher "Mode agentique" décochée par défaut sur `/chat`, `agent: bool` sur `POST /api/chat`.
   Décision de sécurité complète : DECISIONS.md D18 (règles non négociables + limite honnête :
   jamais testé en conditions réelles, aucune clé API/Ollama disponible dans cet environnement).
-- **Suite immédiate** : C (page web mémoire, tri/pagination recherche, paquet pip d'exemple).
+- **C.1 — Page web Mémoire : faite, testée (13 tests `test_web_memory.py`).** `/memory` +
+  `/partials/memory-list`, `/partials/memory-value`, `/partials/memory/forget` (web/app.py) —
+  n'ajoute aucune logique nouvelle, expose uniquement `core/memory.py` (Phase 7) déjà existant.
+  Filtre niveau/projet, contenu complet d'une entrée sur demande, suppression avec confirmation
+  htmx (`hx-confirm`). Lien de nav "Mémoire" activé dans `base.html` (était `disabled` depuis la
+  Phase 2) ; tooltip "Plugins" corrigé au passage (mentionnait encore "Arrive en Phase 8", alors
+  que la Phase 8 est terminée depuis longtemps).
+- **Suite immédiate** : C.2 (tri/pagination recherche), C.3 (paquet pip d'exemple).
 
 **Important pour l'utilisateur** : `S1MONE_WEB_PASSWORD` doit être choisi et défini par
 l'utilisateur lui-même dans son `.env` sur sa machine réelle (secret que l'agent ne peut pas

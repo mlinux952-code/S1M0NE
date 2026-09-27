@@ -1,0 +1,8 @@
+{% if error %}
+<p class="muted" style="color:#e05a5a;">{{ error }}</p>
+{% else %}
+<div class="card">
+    <h3 style="margin-top:0;"><code>{{ level }}</code> / <code>{{ key }}</code></h3>
+    <pre class="terminal-output">{{ value_json }}</pre>
+</div>
+{% endif %}
