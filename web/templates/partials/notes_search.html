@@ -1,0 +1,20 @@
+{% if not available %}
+<p class="muted">Recherche de notes indisponible sur ce SQLite (extension FTS5 non supportée).</p>
+{% elif error %}
+<p class="muted">{{ error }}</p>
+{% elif not query.strip() %}
+<p class="muted">Tape une recherche ci-dessus (recherche par mot-clé dans les notes déjà indexées).</p>
+{% elif not results %}
+<p class="muted">Aucun résultat pour « {{ query }} ».</p>
+{% else %}
+<table>
+    <tr><th>Titre</th><th>Extrait</th><th>Fichier</th></tr>
+    {% for r in results %}
+    <tr>
+        <td>{{ r.title }}</td>
+        <td>{{ r.snippet }}</td>
+        <td><code>{{ r.path }}</code></td>
+    </tr>
+    {% endfor %}
+</table>
+{% endif %}

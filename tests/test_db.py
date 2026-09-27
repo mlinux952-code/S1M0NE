@@ -6,6 +6,7 @@ from core.db import (
     database_health,
     get_connection,
     init_db,
+    notes_fts_available,
 )
 
 
@@ -27,6 +28,23 @@ def test_init_db_is_idempotent(tmp_path):
     with get_connection(db_path) as conn:
         n = conn.execute("SELECT COUNT(*) as n FROM schema_meta").fetchone()["n"]
     assert n == 1
+
+
+def test_init_db_creates_notes_fts_table(tmp_path):
+    """Catégorie F : la table FTS5 de recherche de notes doit exister après init_db (sauf
+    dégradation gracieuse sur un SQLite sans FTS5, testée séparément ci-dessous)."""
+    db_path = tmp_path / "test.db"
+    init_db(db_path)
+    assert notes_fts_available(db_path) is True
+
+
+def test_notes_fts_available_is_false_when_table_absent(tmp_path):
+    """Simule une base où la table notes_fts n'a jamais pu être créée (ex : SQLite compilé sans
+    FTS5) : notes_fts_available() doit détecter l'absence sans lever d'exception."""
+    db_path = tmp_path / "test_no_fts.db"
+    with get_connection(db_path) as conn:
+        conn.execute("CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT)")
+    assert notes_fts_available(db_path) is False
 
 
 def test_database_health_reports_ok_after_init(monkeypatch, tmp_path):

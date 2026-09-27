@@ -217,3 +217,73 @@ def test_backup_task_type_creates_a_real_backup_file(tmp_path, monkeypatch):
 
 def test_backup_task_type_is_registered():
     assert "backup" in available_types()
+
+
+def test_url_check_task_type_is_registered():
+    assert "url_check" in available_types()
+
+
+def test_rss_check_task_type_is_registered():
+    assert "rss_check" in available_types()
+
+
+def test_url_check_task_type_executes_end_to_end(monkeypatch):
+    """Test de câblage (registry -> core.url_check), pas de re-test du comportement détaillé
+    (déjà couvert par tests/test_url_check.py) : confirme juste qu'exécuter la tâche via le
+    Task Manager, de bout en bout, produit bien un SUCCESS avec le résultat attendu."""
+    import httpx
+
+    import core.url_check as url_check_module
+
+    real_async_client = httpx.AsyncClient
+
+    def fake_client(*args, **kwargs):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200)
+
+        return real_async_client(transport=httpx.MockTransport(handler))
+
+    monkeypatch.setattr(url_check_module.httpx, "AsyncClient", fake_client)
+
+    import json
+
+    task_id = submit_task("url_check", {"url": "https://exemple.test"})
+    asyncio.run(execute_task(task_id))
+
+    task = get_task(task_id)
+    assert task["status"] == "SUCCESS"
+    result = json.loads(task["result"])
+    assert result["up"] is True
+
+
+def test_rss_check_task_type_executes_end_to_end(monkeypatch):
+    """Test de câblage (registry -> core.feed_check), pas de re-test du comportement détaillé
+    (déjà couvert par tests/test_feed_check.py)."""
+    import httpx
+
+    import core.feed_check as feed_check_module
+
+    rss_sample = (
+        "<rss><channel><item><guid>id-1</guid><title>Article</title>"
+        "<link>https://exemple.test/1</link></item></channel></rss>"
+    )
+
+    real_async_client = httpx.AsyncClient
+
+    def fake_client(*args, **kwargs):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, text=rss_sample)
+
+        return real_async_client(transport=httpx.MockTransport(handler))
+
+    monkeypatch.setattr(feed_check_module.httpx, "AsyncClient", fake_client)
+
+    import json
+
+    task_id = submit_task("rss_check", {"url": "https://exemple.test/feed"})
+    asyncio.run(execute_task(task_id))
+
+    task = get_task(task_id)
+    assert task["status"] == "SUCCESS"
+    result = json.loads(task["result"])
+    assert result["items_total"] == 1

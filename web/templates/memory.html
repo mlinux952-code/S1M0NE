@@ -48,4 +48,20 @@
 >
     <p class="muted">Chargement…</p>
 </div>
+
+<h2 style="margin-top:2rem;">Notes personnelles (Catégorie F)</h2>
+<p class="hint">
+    Mini "second brain" : recherche plein texte (mots-clés, pas de sens/embeddings) dans tes
+    propres notes <code>.md</code>/<code>.markdown</code>/<code>.txt</code>. Indexer un dossier
+    reste réservé à la CLI (<code>s1mone notes index &lt;chemin&gt;</code>) — un chemin de
+    fichier arbitraire n'a pas sa place dans un formulaire web. Cette page ne fait QUE chercher
+    dans ce qui a déjà été indexé.
+</p>
+<form hx-get="/partials/notes-search" hx-target="#notes-search-results" hx-trigger="submit" hx-swap="innerHTML">
+    <input type="search" name="q" placeholder="mots recherchés…" style="width:20rem;">
+    <button type="submit">Rechercher</button>
+</form>
+<div id="notes-search-results" style="margin-top:1rem;">
+    <p class="muted">Tape une recherche ci-dessus.</p>
+</div>
 {% endblock %}

@@ -8,6 +8,9 @@ Commandes disponibles :
     s1mone version  -> version + infos plateforme
     s1mone config show  -> configuration effective (config.toml + .env), secrets masqués (Cat. E)
     s1mone cache list/clear -> détail et nettoyage manuel du cache de recherche (Cat. E)
+    s1mone notes index/search  -> mini second brain : recherche plein texte de tes notes (Cat. F)
+    (Cat. F : nouveaux types de tâche planifiables 'url_check' et 'rss_check', voir
+     's1mone schedule create --help')
 
 Le terminal doit rester utilisable même sans l'interface web (mega-prompt §6) :
 cette CLI ne dépend d'aucun serveur, elle appelle directement les modules core/system.
@@ -93,6 +96,9 @@ app.add_typer(config_app, name="config")
 cache_app = typer.Typer(help="Cache de recherche (Phase 4) : consultation et nettoyage manuel.")
 app.add_typer(cache_app, name="cache")
 
+notes_app = typer.Typer(help="Recherche plein texte de notes personnelles (Catégorie F, mini second brain).")
+app.add_typer(notes_app, name="notes")
+
 
 _COMMANDS_NEEDING_DB = {
     "status",
@@ -105,6 +111,8 @@ _COMMANDS_NEEDING_DB = {
     "notify",
     "project",
     "schedule",
+    "cache",
+    "notes",
 }
 
 
@@ -921,6 +929,92 @@ def cache_clear_cmd(
         raise typer.Exit(code=0)
     n = cache_clear_all()
     console.print(f"[yellow]{n} entrée(s) supprimée(s) (cache entièrement vidé).[/yellow]")
+
+
+@notes_app.command("index")
+def notes_index_cmd(
+    path: str = typer.Argument(..., help="Fichier ou dossier à indexer (.md/.markdown/.txt)."),
+    recursive: bool = typer.Option(
+        True, "--recursive/--no-recursive", help="Parcourir les sous-dossiers (défaut : oui)."
+    ),
+) -> None:
+    """Indexe des notes personnelles pour la recherche plein texte (Catégorie F, mini second
+    brain). Rien n'est jamais indexé automatiquement : geste explicite à chaque fois, comme un
+    'git add'. Ré-indexer un fichier déjà connu remplace son contenu (jamais de doublon)."""
+    from core.notes import NotesUnavailableError, index_path
+
+    try:
+        result = index_path(path, recursive=recursive)
+    except FileNotFoundError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=1) from exc
+    except NotesUnavailableError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=1) from exc
+
+    console.print(
+        f"[green]{result['indexed']} note(s) indexée(s)[/green], "
+        f"{result['skipped']} fichier(s) ignoré(s) (extension non prise en charge)."
+    )
+    for err in result["errors"]:
+        console.print(f"[red]Erreur : {err}[/red]")
+
+
+@notes_app.command("search")
+def notes_search_cmd(
+    query: str = typer.Argument(..., help="Termes recherchés (recherche par mot-clé, pas par sens)."),
+    limit: int = typer.Option(20, help="Nombre maximum de résultats."),
+) -> None:
+    """Recherche dans les notes déjà indexées (titre + contenu), classées par pertinence."""
+    from rich.markup import escape
+
+    from core.notes import NotesUnavailableError, search_notes
+
+    try:
+        results = search_notes(query, limit=limit)
+    except NotesUnavailableError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=1) from exc
+
+    if not results:
+        console.print("[grey58]Aucun résultat.[/grey58]")
+        return
+    for r in results:
+        # escape() est indispensable ici : le titre/snippet vient du contenu LIBRE de l'utilisateur
+        # et peut contenir des crochets ('[...]', notamment ceux ajoutés par snippet() pour
+        # surligner les mots trouvés) que Rich interpréterait sinon comme des balises de style.
+        console.print(f"[bold]{escape(r['title'])}[/bold]  [dim]({escape(r['path'])})[/dim]")
+        console.print(f"  {escape(r['snippet'])}")
+
+
+@notes_app.command("stats")
+def notes_stats_cmd() -> None:
+    """Nombre de notes actuellement indexées."""
+    from core.notes import notes_stats
+
+    stats = notes_stats()
+    if not stats["available"]:
+        console.print("[red]Recherche de notes indisponible sur ce SQLite (FTS5 non supporté).[/red]")
+        raise typer.Exit(code=1)
+    console.print(f"{stats['total']} note(s) indexée(s).")
+
+
+@notes_app.command("clear")
+def notes_clear_cmd(
+    yes: bool = typer.Option(False, "--yes", "-y", help="Ne pas demander de confirmation."),
+) -> None:
+    """Vide entièrement l'index de notes (les fichiers d'origine ne sont jamais touchés)."""
+    from core.notes import NotesUnavailableError, clear_notes_index
+
+    if not yes and not typer.confirm("Vider entièrement l'index de notes ?"):
+        console.print("[grey58]Annulé.[/grey58]")
+        raise typer.Exit(code=0)
+    try:
+        n = clear_notes_index()
+    except NotesUnavailableError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=1) from exc
+    console.print(f"[yellow]{n} note(s) retirée(s) de l'index.[/yellow]")
 
 
 @backup_app.command("create")

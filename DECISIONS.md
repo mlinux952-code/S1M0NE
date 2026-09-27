@@ -490,3 +490,61 @@ pour que S1M0NE fonctionne. Conforme à la règle LOW RESOURCE FIRST (§3 du mé
   tirée mais reconfirmée : ne jamais faire confiance à un `edit_file` sans relancer la suite
   complète immédiatement après.
 - Suite complète après E.1 + E.2 + E.3 : **465/465 passed.**
+
+## D21 — Catégorie F : recherche large (marché existant) puis surveillance + mini second brain
+
+- **Contexte** : mandat "tous et plus encore" réaffirmé une nouvelle fois, cette fois avec
+  consigne explicite de partir d'une recherche large (web) plutôt que d'une liste d'idées déjà en
+  tête, "tout peut être utile". Recherche effectuée sur les assistants personnels self-hosted
+  (LibreChat, Khoj, AnythingLLM...), les "second brain" open source (Obsidian, Logseq, projets
+  GitHub du sujet), et les outils d'automatisation self-hosted (n8n, Vikunja...). Trois familles
+  de fonctionnalités ressortent comme pertinentes ET réalisables sans dépendance lourde :
+  surveillance passive (uptime, flux RSS) et recherche de connaissance personnelle (second brain).
+  Rejeté d'emblée : bases vectorielles/embeddings (ChromaDB, pgvector — dépendance lourde,
+  contraire à LOW RESOURCE FIRST), connecteurs de messagerie (Telegram/Discord/WhatsApp — hors
+  périmètre "assistant personnel local", complexité d'auth OAuth disproportionnée).
+- **F.1 — Recherche plein texte de notes personnelles (`core/notes.py`, `s1mone notes
+  index/search/stats/clear`).** SQLite FTS5 (extension déjà compilée dans la stdlib sur la
+  quasi-totalité des systèmes, vérifié en sandbox) plutôt qu'une base vectorielle : S1M0NE
+  indexe les MOTS des notes (`.md`/`.markdown`/`.txt`), pas leur sens — suffisant pour un usage
+  personnel, zéro dépendance, zéro modèle à télécharger. Dégradation gracieuse si FTS5 absent
+  (rare) : `core.db.notes_fts_available()` détecte le cas, le reste de S1M0NE continue de
+  fonctionner. Indexation strictement manuelle (`s1mone notes index <chemin>`), jamais de
+  surveillance automatique de dossier. Web : section "Notes personnelles" ajoutée à la page
+  `/memory` existante (même thème : mémoire personnelle) — recherche SEULEMENT, l'indexation
+  reste réservée à la CLI (un chemin de fichier arbitraire n'a pas sa place dans un formulaire
+  web, même logique que "pas de memory remember en CLI", D.3). `[DECIDED]`
+- **F.2 — Veille RSS/Atom (`core/feed_check.py`, type de tâche `rss_check`).** Parseur XML
+  minimal via `xml.etree` (stdlib), aucune dépendance `feedparser`. Se programme comme n'importe
+  quel type de tâche existant via le scheduler déjà en place (D17/NEXT_STEPS §B.1) — zéro
+  nouvelle infrastructure de planification. Un flux mal formé dégrade gracieusement (liste vide)
+  plutôt que de faire planter la tâche planifiée. Les identifiants déjà vus sont stockés en
+  mémoire persistante (`core.memory`, PAS une nouvelle table) avec une fenêtre bornée à 200 ids.
+  Au tout premier contrôle, aucune notification (le flux existant n'est jamais traité comme "tout
+  nouveau" — sinon spam garanti dès la première exécution).
+- **F.3 — Surveillance de disponibilité d'URL (`core/url_check.py`, type de tâche
+  `url_check`).** Même principe de réutilisation totale du scheduler. Ne notifie qu'un
+  CHANGEMENT d'état (accessible -> injoignable ou l'inverse), jamais à chaque vérification
+  réussie répétée — sinon un check toutes les 5 minutes noierait les notifications en quelques
+  heures. État précédent stocké en mémoire persistante (même mécanisme que F.2), pas de nouvelle
+  table.
+- Exemple d'usage réel : `s1mone schedule create url_check --interval 5m --param
+  url=https://exemple.com` ou `s1mone schedule create rss_check --interval 30m --param
+  url=https://exemple.com/feed.xml --param name="Mon flux"` — la syntaxe de planification est
+  celle qui existait déjà (`--param clé=valeur`, répétable), aucune nouveauté ajoutée là.
+- **Deux bugs réels détectés et corrigés pendant cette session, tous deux par test manuel avant
+  commit (jamais par l'utilisateur cette fois) :**
+  1. `cache` et `notes` étaient absents de `_COMMANDS_NEEDING_DB` (`cli/main.py`) : un
+     utilisateur lançant `s1mone cache list` ou `s1mone notes stats` comme toute première
+     commande (base SQLite jamais créée) aurait eu `OperationalError: no such table`. Bug
+     introduit dès la Catégorie E (E.3) mais jamais détecté car les tests pytest
+     initialisaient toujours la base à la main dans leur fixture, masquant le bug réel. Corrigé
+     en ajoutant les deux commandes à l'ensemble, avec un test de régression dédié qui n'initialise
+     PAS la base manuellement (`test_cli_notes.py::test_cache_list_works_on_fresh_database...`).
+  2. `s1mone notes search` : Rich interprétait les crochets `[mot]` ajoutés par `snippet()` de
+     SQLite (surlignage du terme trouvé) comme une balise de style, faisant disparaître le texte
+     après le crochet ouvrant. Même piège déjà rencontré et corrigé pour `config show` (D20).
+     Corrigé avec `rich.markup.escape()` sur le titre/chemin/extrait affichés.
+- Suite complète après Catégorie F : **512/512 passed** (43 nouveaux tests : `test_url_check.py`,
+  `test_feed_check.py`, `test_notes.py`, `test_cli_notes.py`, `test_web_notes.py`, ajouts dans
+  `test_tasks.py` et `test_db.py`).

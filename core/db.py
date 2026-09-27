@@ -100,6 +100,20 @@ CREATE TABLE IF NOT EXISTS schedules (
 CREATE INDEX IF NOT EXISTS idx_schedules_enabled_next_run ON schedules(enabled, next_run_at);
 """
 
+# Recherche plein texte de notes personnelles (Catégorie F : mini "second brain", inspiré
+# d'outils comme Khoj tout en restant minimal). Table à part (pas dans SCHEMA ci-dessus) : une
+# table virtuelle FTS5 peut échouer à se créer sur un SQLite compilé sans l'extension FTS5 (rare
+# mais possible) — isolée pour que ce cas dégrade gracieusement (core/notes.py désactivé) sans
+# empêcher le reste de S1M0NE de démarrer (mega-prompt : robustesse avant tout).
+NOTES_FTS_SCHEMA = """
+CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
+    path UNINDEXED,
+    title,
+    content,
+    tokenize = 'porter unicode61'
+);
+"""
+
 SCHEMA_VERSION = "1"
 
 
@@ -137,8 +151,26 @@ def init_db(db_path: Path | None = None) -> Path:
             "INSERT OR IGNORE INTO schema_meta (key, value) VALUES ('schema_version', ?)",
             (SCHEMA_VERSION,),
         )
+    try:
+        with get_connection(path) as conn:
+            conn.executescript(NOTES_FTS_SCHEMA)
+    except sqlite3.OperationalError as exc:
+        # SQLite compilé sans l'extension FTS5 (rare) : core/notes.py restera indisponible,
+        # tout le reste de S1M0NE continue de fonctionner normalement (dégradation gracieuse).
+        logger.warning(f"Recherche de notes indisponible (FTS5 non supporté par ce SQLite) : {exc}")
     logger.info(f"Base SQLite initialisée : {path}")
     return path
+
+
+def notes_fts_available(db_path: Path | None = None) -> bool:
+    """True si la table de recherche de notes (FTS5) a bien pu être créée sur cette base."""
+    path = db_path or settings.db_path
+    try:
+        with get_connection(path) as conn:
+            conn.execute("SELECT 1 FROM notes_fts LIMIT 0")
+        return True
+    except sqlite3.OperationalError:
+        return False
 
 
 def database_health() -> dict[str, Any]:

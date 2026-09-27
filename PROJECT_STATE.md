@@ -366,6 +366,22 @@ attendre de sélection précise à chaque étape (même mandat que pour les Phas
       `test_cache.py`).
     - Aucune nouvelle idée identifiée après E — S1M0NE couvre maintenant, via au moins une
       façade (CLI et/ou web), toute logique métier déjà écrite dans le projet.
+  - **Catégorie F ("tous et plus encore", cette fois précédé d'une recherche web large sur les
+    assistants personnels/second brain/outils self-hosted existants) : terminée.** Voir
+    DECISIONS.md D21. Trois nouvelles capacités, toutes sans nouvelle dépendance lourde :
+    - **F.1 — `s1mone notes index/search/stats/clear`** : mini "second brain", recherche plein
+      texte (SQLite FTS5, zéro dépendance) dans des notes personnelles `.md`/`.txt`. Section
+      "Notes personnelles" ajoutée à `/memory` côté web (recherche seule, indexation CLI only).
+    - **F.2 — type de tâche `rss_check`** : veille RSS/Atom (parseur XML minimal stdlib),
+      notification à chaque nouvel article, se programme via le scheduler déjà existant
+      (`s1mone schedule create rss_check --interval 30m --param url=...`).
+    - **F.3 — type de tâche `url_check`** : surveillance de disponibilité d'URL, notifie
+      seulement un changement d'état (haut/bas), même mécanisme de planification.
+    - Deux bugs réels trouvés et corrigés avant tout commit (voir DECISIONS.md D21) :
+      `cache`/`notes` manquaient dans `_COMMANDS_NEEDING_DB` (plantage sur base jamais
+      initialisée) et un piège Rich (crochets de `snippet()` interprétés comme balises de style),
+      même piège déjà vu pour `config show` (D20).
+    - Suite complète : **512/512 passed** (43 nouveaux tests).
   - **Post-catégorie D, deux correctifs suite à la mise à jour réelle chez l'utilisateur** :
     1. `install.sh` et `scripts/*.sh` avaient perdu leur bit exécutable dans un commit précédent
        (bug de l'environnement de travail de l'agent) → `./install.sh` échouait avec "Permission

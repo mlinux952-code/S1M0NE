@@ -340,6 +340,29 @@ def create_app() -> FastAPI:
             },
         )
 
+    @app.get("/partials/notes-search", response_class=HTMLResponse)
+    def partial_notes_search(request: Request, q: str = "") -> HTMLResponse:
+        """Recherche plein texte de notes personnelles (Catégorie F, mini second brain) — lecture
+        seule côté web : indexer un nouveau fichier reste réservé à la CLI ('s1mone notes
+        index <chemin>'), un chemin de fichier arbitraire n'a pas sa place dans un formulaire
+        web (même logique que 'pas de memory remember en CLI', D.3 : chaque façade n'expose que
+        ce qui a du sens pour elle)."""
+        from core.notes import NotesUnavailableError, notes_stats, search_notes
+
+        available = notes_stats()["available"]
+        results: list[dict[str, Any]] = []
+        error: str | None = None
+        if available and q.strip():
+            try:
+                results = search_notes(q, limit=30)
+            except NotesUnavailableError as exc:
+                error = str(exc)
+        return templates.TemplateResponse(
+            request,
+            "partials/notes_search.html",
+            {"query": q, "results": results, "available": available, "error": error},
+        )
+
     @app.get("/api/notifications")
     def api_notifications_list(unread_only: bool = False, limit: int = 50) -> dict[str, Any]:
         return {

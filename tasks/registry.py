@@ -86,3 +86,33 @@ async def _handle_backup(parameters: dict[str, Any]) -> dict[str, Any]:
 
     path = backup_db()
     return {"backup_path": str(path)}
+
+
+@register("url_check")
+async def _handle_url_check(parameters: dict[str, Any]) -> dict[str, Any]:
+    """Vérifie qu'une URL répond (surveillance de disponibilité perso, Catégorie F). Se
+    programme via 's1mone schedule create url_check --interval 5m
+    --param url=https://exemple.com'. Logique complète dans core/url_check.py
+    (notifie seulement un changement d'état, jamais à chaque vérification réussie)."""
+    from core.url_check import check_url  # import local, même pattern que les autres handlers
+
+    return await check_url(
+        url=parameters.get("url"),
+        timeout=float(parameters.get("timeout", 10.0)),
+    )
+
+
+@register("rss_check")
+async def _handle_rss_check(parameters: dict[str, Any]) -> dict[str, Any]:
+    """Surveille un flux RSS/Atom et notifie chaque nouvel article (Catégorie F). Se programme
+    via 's1mone schedule create rss_check --interval 30m
+    --param url=https://exemple.com/feed.xml --param name="Mon flux"'. Logique complète dans
+    core/feed_check.py (parseur XML minimal, sans dépendance feedparser)."""
+    from core.feed_check import check_feed  # import local, même pattern que les autres handlers
+
+    return await check_feed(
+        url=parameters.get("url"),
+        name=parameters.get("name"),
+        timeout=float(parameters.get("timeout", 15.0)),
+    )
+
