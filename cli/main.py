@@ -21,6 +21,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from connectors.engine import available_connectors, search_all
 from core.config import settings
 from core.timeutil import format_timestamp
 from system.healthcheck import run_all_checks
@@ -46,7 +47,7 @@ task_app = typer.Typer(help="Gestion des tâches (Task Manager).")
 app.add_typer(task_app, name="task")
 
 
-_COMMANDS_NEEDING_DB = {"status", "task"}
+_COMMANDS_NEEDING_DB = {"status", "task", "search"}
 
 
 @app.callback()
@@ -150,6 +151,60 @@ def version() -> None:
     info = get_platform_info()
     console.print("[bold]S1M0NE[/bold] — v0.1.0 (Phase 1 : Fondation)")
     console.print(f"Python {info['python_version']} sur {info['system']} {info['release']}")
+
+
+@app.command()
+def search(
+    query: str = typer.Argument(..., help="Terme à rechercher."),
+    sources: Optional[str] = typer.Option(
+        None,
+        "--sources",
+        help="Sources séparées par des virgules (ex: npm,github). Par défaut : toutes.",
+    ),
+    limit: int = typer.Option(10, help="Nombre maximum de résultats par source."),
+    list_sources: bool = typer.Option(
+        False, "--list-sources", help="Affiche juste la liste des sources disponibles et quitte."
+    ),
+) -> None:
+    """Recherche dans les connecteurs (Phase 5) : npm, Hugging Face, GitHub, GitLab, Codeberg,
+    PyPI et SourceForge (ces deux derniers en mode dégradé : nom exact uniquement)."""
+    if list_sources:
+        table = Table(title="S1M0NE — sources de recherche disponibles")
+        table.add_column("Source")
+        table.add_column("Description")
+        for c in available_connectors():
+            table.add_row(c["name"], c["description"])
+        console.print(table)
+        return
+
+    source_list = [s.strip() for s in sources.split(",") if s.strip()] if sources else None
+    outcome = asyncio.run(search_all(query, limit_per_source=limit, sources=source_list))
+
+    results = outcome["results"]
+    errors = outcome["errors"]
+    cache_hits = outcome["cache_hits"]
+
+    table = Table(title=f"S1M0NE — recherche : \"{query}\"")
+    table.add_column("Source")
+    table.add_column("Nom")
+    table.add_column("Description", max_width=50)
+    table.add_column("URL", max_width=40)
+
+    for r in results:
+        note = " [grey58](nom exact)[/grey58]" if r.get("extra", {}).get("exact_match_only") else ""
+        table.add_row(r["source"], r["name"] + note, r.get("description") or "", r.get("url") or "")
+
+    console.print(table)
+
+    if not results:
+        console.print("[grey58]Aucun résultat.[/grey58]")
+
+    if cache_hits:
+        console.print(f"[grey58]Servi depuis le cache : {', '.join(sorted(cache_hits))}[/grey58]")
+
+    if errors:
+        for src, msg in errors.items():
+            console.print(f"[bold red]Erreur ({src}) :[/bold red] {msg}")
 
 
 @task_app.command("submit")

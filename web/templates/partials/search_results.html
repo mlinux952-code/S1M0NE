@@ -1,0 +1,39 @@
+<div class="card">
+    {% if query.strip() %}
+    <h2>Résultats pour "{{ query }}"
+        <span class="badge badge-ok">{{ results | length }} résultat(s)</span>
+    </h2>
+
+    {% if cache_hits %}
+    <p class="muted">Servi depuis le cache : {{ cache_hits | join(', ') }}</p>
+    {% endif %}
+
+    {% if errors %}
+    {% for src, msg in errors.items() %}
+    <p class="muted" style="color:#e05a5a;">Erreur ({{ src }}) : {{ msg }}</p>
+    {% endfor %}
+    {% endif %}
+
+    <table>
+        <thead>
+            <tr><th>Source</th><th>Nom</th><th>Description</th><th>Lien</th></tr>
+        </thead>
+        <tbody>
+        {% for r in results %}
+            <tr>
+                <td><span class="badge badge-ok">{{ r.source }}</span></td>
+                <td>{{ r.name }}
+                    {% if r.extra.exact_match_only %}<span class="muted">(nom exact)</span>{% endif %}
+                </td>
+                <td>{{ r.description or '' }}</td>
+                <td>{% if r.url %}<a href="{{ r.url }}" target="_blank" rel="noopener">ouvrir</a>{% endif %}</td>
+            </tr>
+        {% else %}
+            <tr><td colspan="4" class="muted">Aucun résultat.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="muted">Tape un terme puis clique sur "Rechercher".</p>
+    {% endif %}
+</div>

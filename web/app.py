@@ -23,6 +23,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
+from connectors.engine import available_connectors, search_all
 from core.db import init_db
 from core.logging_setup import get_logger
 from core.timeutil import format_timestamp
@@ -179,6 +180,37 @@ def create_app() -> FastAPI:
             request,
             "partials/tasks.html",
             {"tasks": tasks, "task_types": available_types()},
+        )
+
+    @app.get("/api/search")
+    async def api_search(q: str = "", sources: str | None = None, limit: int = 10) -> dict[str, Any]:
+        source_list = [s.strip() for s in sources.split(",") if s.strip()] if sources else None
+        return await search_all(q, limit_per_source=limit, sources=source_list)
+
+    @app.get("/api/search/sources")
+    def api_search_sources() -> dict[str, Any]:
+        return {"sources": available_connectors()}
+
+    @app.get("/partials/search-results", response_class=HTMLResponse)
+    async def partial_search_results(
+        request: Request, q: str = "", sources: str | None = None, limit: int = 10
+    ) -> HTMLResponse:
+        source_list = [s.strip() for s in sources.split(",") if s.strip()] if sources else None
+        outcome = (
+            await search_all(q, limit_per_source=limit, sources=source_list)
+            if q.strip()
+            else {"results": [], "errors": {}, "cache_hits": []}
+        )
+        return templates.TemplateResponse(
+            request,
+            "partials/search_results.html",
+            {"query": q, **outcome},
+        )
+
+    @app.get("/search", response_class=HTMLResponse)
+    def search_page(request: Request) -> HTMLResponse:
+        return templates.TemplateResponse(
+            request, "search.html", {"sources": available_connectors()}
         )
 
     @app.get("/", response_class=HTMLResponse)

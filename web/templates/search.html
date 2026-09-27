@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Recherche{% endblock %}
+{% block content %}
+<h1>Recherche</h1>
+<p class="hint">Interroge en parallèle les {{ sources | length }} connecteurs de la Phase 5 :
+    {% for s in sources %}<code title="{{ s.description }}">{{ s.name }}</code>{% if not loop.last %}, {% endif %}{% endfor %}.
+    PyPI et SourceForge sont en <strong>mode dégradé</strong> (nom exact de paquet/projet
+    uniquement, pas de recherche par mot-clé — voir DECISIONS.md §D9).
+</p>
+
+<form hx-get="/partials/search-results"
+      hx-target="#search-results"
+      hx-swap="innerHTML"
+      hx-trigger="submit">
+    <input type="text" name="q" placeholder="ex : react, flask, vlc..." autofocus
+           style="width:280px; padding:0.4rem;">
+    <input type="number" name="limit" value="5" min="1" max="50" style="width:70px; padding:0.4rem;"
+           title="Résultats max par source">
+    <button type="submit">Rechercher</button>
+</form>
+
+<div id="search-results" style="margin-top:1.5rem;">
+    <p class="muted">Tape un terme puis clique sur "Rechercher".</p>
+</div>
+{% endblock %}
