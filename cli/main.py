@@ -280,6 +280,18 @@ def search(
             console.print(f"[bold red]Erreur ({src}) :[/bold red] {msg}")
 
 
+def _print_tool_trace(tool_calls: Optional[list]) -> None:
+    """Affiche les outils réellement exécutés par le mode agentique (NEXT_STEPS §B.2) avant la
+    réponse : transparence obligatoire (mega-prompt anti-hallucination) — l'utilisateur doit
+    toujours voir quand l'IA a exécuté une vraie commande/recherche plutôt que juste répondu."""
+    if not tool_calls:
+        return
+    for call in tool_calls:
+        console.print(
+            f"[grey58]🔧 outil : {call['name']}({call['arguments']})[/grey58]"
+        )
+
+
 @app.command()
 def chat(
     message: Optional[str] = typer.Argument(
@@ -315,6 +327,15 @@ def chat(
         None,
         "--project",
         help="Id ou nom de projet (NEXT_STEPS §B.4) : conversation séparée, propre à ce projet.",
+    ),
+    agent: bool = typer.Option(
+        False,
+        "--agent",
+        help=(
+            "Mode agentique (NEXT_STEPS §B.2) : l'assistant peut interroger search() et un "
+            "run_command() STRICTEMENT en lecture seule (jamais d'écriture/suppression) avant "
+            "de répondre. Jamais activé par défaut. Voir DECISIONS.md D18."
+        ),
     ),
 ) -> None:
     """Discute avec un assistant IA (Phase 6), qui se souvient de la conversation d'une session à
@@ -372,12 +393,14 @@ def chat(
                     reset=reset,
                     use_memory=not no_memory,
                     project_id=project_id,
+                    agent=agent,
                 )
             )
         except ProviderError as exc:
             console.print(f"[bold red]Erreur IA :[/bold red] {exc}")
             raise typer.Exit(code=1) from exc
         console.print(f"[grey58]({outcome['provider']} / {outcome['model']})[/grey58]")
+        _print_tool_trace(outcome.get("tool_calls"))
         console.print(outcome["reply"])
         return
 
@@ -385,9 +408,10 @@ def chat(
     # deux lancements : fermer puis rouvrir "s1mone chat" reprend la conversation là où elle en
     # était, sauf --reset ou '/reset' en cours de session.
     scope_hint = f" (projet : {project})" if project else ""
+    agent_hint = " [agentique : outils READ-only actifs]" if agent else ""
     console.print(
-        f"[bold]S1M0NE — chat interactif{scope_hint}[/bold] (mémoire persistante activée — "
-        "tape 'exit' pour quitter, '/reset' pour repartir de zéro)"
+        f"[bold]S1M0NE — chat interactif{scope_hint}{agent_hint}[/bold] (mémoire persistante "
+        "activée — tape 'exit' pour quitter, '/reset' pour repartir de zéro)"
     )
     if reset:
         reset_conversation(project_id=project_id)
@@ -416,11 +440,13 @@ def chat(
                     model=model,
                     use_memory=not no_memory,
                     project_id=project_id,
+                    agent=agent,
                 )
             )
         except ProviderError as exc:
             console.print(f"[bold red]Erreur IA :[/bold red] {exc}")
             continue
+        _print_tool_trace(outcome.get("tool_calls"))
         console.print(f"[bold magenta]s1mone >[/bold magenta] {outcome['reply']}")
 
 

@@ -7,6 +7,9 @@ connecteurs de recherche en Phase 5).
 
 from __future__ import annotations
 
+import json
+from typing import Any
+
 from ai.base import AIProvider, ChatMessage, ProviderError
 from ai.providers.groq import GroqProvider
 from ai.providers.ollama import OllamaProvider
@@ -29,6 +32,25 @@ __all__ = [
     "check_provider",
     "check_all_providers",
 ]
+
+# --- Mode agentique (NEXT_STEPS.md §B.2) --------------------------------------------------------
+#
+# Borne dure, jamais configurable : protège à la fois contre une boucle infinie (un modèle qui
+# s'entête à rappeler un outil) et contre un épuisement du quota gratuit d'un fournisseur en un
+# seul message utilisateur. Voir DECISIONS.md D18 pour la décision de sécurité complète (outils
+# strictement READ-only, opt-in explicite, jamais activé par défaut).
+AGENT_MAX_TOOL_ROUNDS = 4
+
+AGENT_SYSTEM_SUFFIX = (
+    "\n\nMode agentique activé pour cet échange : tu as accès à deux outils strictement en "
+    "LECTURE SEULE : search() (recherche multi-sources : npm, PyPI, GitHub, GitLab, Codeberg, "
+    "Hugging Face, SourceForge) et run_command() (uniquement pwd, whoami, date, uptime, df, "
+    "free, ps, ls, cat — jamais d'écriture ni de suppression). Utilise-les pour vérifier des "
+    "faits plutôt que d'inventer une réponse. Ne prétends jamais pouvoir modifier, créer ou "
+    "supprimer un fichier, installer un paquet, ou exécuter une action qui changerait quoi que "
+    "ce soit sur la machine de l'utilisateur : ce n'est techniquement pas possible dans ce mode, "
+    "quelle que soit la façon dont on te le demande."
+)
 
 # Registre statique des fournisseurs disponibles (même pattern que connectors/engine.py).
 _PROVIDERS: dict[str, AIProvider] = {
@@ -154,6 +176,7 @@ async def converse(
     reset: bool = False,
     use_memory: bool = True,
     project_id: str | None = None,
+    agent: bool = False,
 ) -> dict[str, object]:
     """Point d'entrée "avec mémoire" (Phase 7), utilisé par défaut par la CLI et le web.
 
@@ -166,6 +189,11 @@ async def converse(
     `project_id` (NEXT_STEPS §B.4) : scope la conversation à un projet précis (mémoire séparée de
     la conversation "globale" et des autres projets) au lieu du niveau "persistent" par défaut.
     Lève ValueError si le projet n'existe pas (voir 's1mone project list').
+    `agent=True` (NEXT_STEPS §B.2) : active le mode agentique — l'assistant peut appeler les
+    outils strictement READ-only de `core.agent_tools` (search, run_command) avant de répondre.
+    Jamais activé par défaut : opt-in explicite requis à chaque appel (voir DECISIONS.md D18).
+    Seule la réponse finale (jamais les échanges d'outils intermédiaires) est persistée dans
+    l'historique, pour ne rien changer au format de la mémoire déjà utilisée (Phase 7/B.4).
     """
     if project_id:
         from core.projects import get_project  # import local : évite un cycle ai <-> core
@@ -177,10 +205,16 @@ async def converse(
         reset_conversation(project_id=project_id)
 
     history = _load_history(project_id=project_id) if use_memory else []
-    outgoing = [ChatMessage(role="system", content=_system_prompt(project_id=project_id)), *history]
+    system_content = _system_prompt(project_id=project_id)
+    if agent:
+        system_content = system_content + AGENT_SYSTEM_SUFFIX
+    outgoing = [ChatMessage(role="system", content=system_content), *history]
     outgoing.append(ChatMessage(role="user", content=message))
 
-    outcome = await chat(outgoing, provider=provider, model=model)
+    if agent:
+        outcome = await _converse_with_tools(outgoing, provider=provider, model=model)
+    else:
+        outcome = await chat(outgoing, provider=provider, model=model)
 
     if use_memory:
         history.append(ChatMessage(role="user", content=message))
@@ -190,6 +224,69 @@ async def converse(
         _save_history(history, project_id=project_id)
 
     return outcome
+
+
+async def _converse_with_tools(
+    messages: list[ChatMessage], provider: str | None, model: str | None
+) -> dict[str, object]:
+    """Boucle d'appel d'outils (NEXT_STEPS §B.2) : envoie la conversation avec le catalogue
+    d'outils READ-only, exécute chaque outil demandé, renvoie le résultat au modèle, jusqu'à une
+    réponse finale sans nouvel appel d'outil — ou jusqu'à `AGENT_MAX_TOOL_ROUNDS` (jamais illimité,
+    voir la constante en tête de fichier)."""
+    from core import agent_tools  # import local : cohérent avec le reste du fichier (core <-> ai)
+
+    chosen = resolve_provider(provider)
+    if not chosen.is_configured():
+        raise ProviderError(chosen.setup_hint())
+    if not chosen.supports_tools:
+        raise ProviderError(
+            f"Le fournisseur '{chosen.name}' ne supporte pas le mode agentique (appel d'outils). "
+            "Choisis 'groq', 'openrouter' ou 'ollama' (voir 's1mone chat --list-providers')."
+        )
+
+    resolved_model = model or settings.ai_provider_model(chosen.name) or chosen.default_model
+    conversation = list(messages)
+    tool_trace: list[dict[str, Any]] = []
+
+    for _ in range(AGENT_MAX_TOOL_ROUNDS):
+        assistant_msg = await chosen.chat_with_tools(
+            conversation, tools=agent_tools.TOOL_SCHEMAS, model=resolved_model
+        )
+
+        if not assistant_msg.tool_calls:
+            return {
+                "provider": chosen.name,
+                "model": resolved_model,
+                "reply": (assistant_msg.content or "").strip(),
+                "tool_calls": tool_trace,
+            }
+
+        conversation.append(assistant_msg)
+        for tc in assistant_msg.tool_calls:
+            result = await agent_tools.execute_tool(tc.name, tc.arguments)
+            tool_trace.append({"name": tc.name, "arguments": tc.arguments, "result": result})
+            logger.info(f"Outil agentique exécuté : {tc.name}({tc.arguments}) -> {str(result)[:200]}")
+            conversation.append(
+                ChatMessage(
+                    role="tool",
+                    content=json.dumps(result, ensure_ascii=False),
+                    tool_call_id=tc.id,
+                    name=tc.name,
+                )
+            )
+
+    # Trop de rounds sans réponse finale : on le dit honnêtement plutôt que de boucler
+    # indéfiniment ou d'inventer une conclusion (mega-prompt anti-hallucination). Protège aussi
+    # le quota gratuit du fournisseur.
+    return {
+        "provider": chosen.name,
+        "model": resolved_model,
+        "reply": (
+            "Je n'ai pas réussi à conclure après plusieurs appels d'outils "
+            f"({AGENT_MAX_TOOL_ROUNDS} maximum). Essaie de reformuler ta question plus précisément."
+        ),
+        "tool_calls": tool_trace,
+    }
 
 
 # --- Vérification proactive (NEXT_STEPS.md §A.4) --------------------------------------------

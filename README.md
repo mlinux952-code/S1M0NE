@@ -217,6 +217,32 @@ Pour un démarrage dès le boot, avant toute connexion (facultatif, sans droits 
 `loginctl enable-linger $USER`. Si `systemd` n'est pas disponible sur ta machine, le script
 l'indique clairement et propose une alternative (`cron @reboot`).
 
+## Assistant agentique (B.2) — usage avancé, opt-in explicite
+
+L'assistant IA peut, sur demande explicite seulement, interroger deux outils **strictement en
+lecture seule** avant de répondre : `search()` (recherche multi-sources, Phase 5) et
+`run_command()` (limité à pwd/whoami/date/uptime/df/free/ps/ls/cat — jamais d'écriture ni de
+suppression, quel que soit le niveau de permission configuré par ailleurs). Voir DECISIONS.md
+§D18 pour le détail complet des garanties de sécurité.
+
+```bash
+s1mone chat --agent "quelles versions récentes de flask existent sur pypi ?"
+s1mone chat --agent   # conversation interactive en mode agentique
+```
+
+Chaque outil réellement exécuté est affiché avant la réponse (transparence totale — jamais une
+boîte noire) :
+
+```
+🔧 outil : search({'query': 'flask'})
+(groq / openai/gpt-oss-20b)
+D'après PyPI, la dernière version de Flask est...
+```
+
+Côté web : case à cocher "Mode agentique" (décochée par défaut) sur la page `/chat`. Jamais activé
+sans action explicite de l'utilisateur, jamais dans les tâches automatiques (B.1) ou les
+notifications (B.3).
+
 ## Tâches récurrentes (B.1)
 
 Répète un type de tâche connu toutes les N secondes/minutes/heures/jours :

@@ -325,6 +325,75 @@ Phase 1+).
 
 ---
 
+## D18 — Assistant IA agentique / appel d'outils (post-plan-initial, NEXT_STEPS.md §B.2)
+
+**Fonctionnalité explicitement identifiée comme sensible côté sécurité avant implémentation.**
+L'utilisateur a maintenu le mandat maximal en connaissance de cause ("tu sais la répense tous et
+plus encours", réaffirmé après un avertissement explicite de l'agent). Les règles ci-dessous ne
+sont donc pas un compromis de facilité : elles sont la condition qui rend cette fonctionnalité
+acceptable à implémenter du tout.
+
+### Règles de sécurité non négociables
+
+1. **Catalogue d'outils exposés au modèle strictement limité à deux fonctions, toutes deux
+   read-only par construction** (`core/agent_tools.py`) :
+   - `search()` : relaie `connectors.engine.search_all()` (Phase 5) — recherche sur des registres
+     publics, lecture seule par nature.
+   - `run_command()` : relaie `core.shell_runner.run_command()` (Phase 9) mais **verrouillé en
+     dur à `Permission.READ`**, jamais dérivé de `settings.cli_permission_level` ni
+     `settings.web_permission_level` (qui restent configurables par l'utilisateur pour SES
+     propres usages, mais ne doivent jamais influencer ce que l'IA peut faire). Au niveau READ,
+     aucune commande du catalogue (`core/permissions.py`) n'est marquée `destructive=True` : il
+     n'existe donc AUCUN chemin de code par lequel l'assistant pourrait écrire, modifier ou
+     supprimer quoi que ce soit. `confirmed=True` n'est jamais transmis ni même exposé au modèle.
+   - Aucun autre outil (pas d'écriture mémoire, pas de soumission de tâche, pas d'appel IA
+     imbriqué...) : le périmètre reste volontairement minimal, conforme à la demande initiale
+     (search + run_command read-only).
+2. **Opt-in explicite, jamais activé par défaut**, à chaque appel : `s1mone chat --agent` en CLI,
+   case à cocher "Mode agentique" décochée par défaut dans l'interface web, `agent: bool = False`
+   sur `POST /api/chat`. Un utilisateur qui n'active jamais ce flag ne voit strictement aucun
+   changement de comportement (le chat normal, Phase 6/7, reste inchangé).
+3. **Boucle d'appel d'outils bornée en dur** (`AGENT_MAX_TOOL_ROUNDS = 4` dans `ai/gateway.py`,
+   jamais configurable) : empêche à la fois une boucle infinie si le modèle s'entête à rappeler
+   un outil, et un épuisement du quota gratuit (Groq/OpenRouter comptent en tokens/minute) en un
+   seul message utilisateur. Au-delà, S1M0NE le dit honnêtement plutôt que d'inventer une
+   conclusion (mega-prompt anti-hallucination).
+4. **Transparence obligatoire** : chaque outil réellement exécuté est retourné dans la réponse
+   (`tool_calls` : nom, arguments, résultat) et affiché à l'utilisateur (CLI : ligne `🔧 outil :
+   ...` avant la réponse ; web : petite ligne au-dessus de chaque message assistant). L'utilisateur
+   voit toujours quand une vraie commande/recherche a été exécutée, jamais une boîte noire.
+   Seule la réponse finale (jamais les échanges d'outils intermédiaires) est persistée dans la
+   mémoire de conversation (Phase 7/B.4) : aucun changement de format de l'historique existant.
+5. **Aucune exception ne doit jamais atteindre le modèle ou l'utilisateur brute** :
+   `core.agent_tools.execute_tool()` capture tout (outil inconnu, arguments malformés, erreur
+   interne) et renvoie `{"error": "..."}` — le modèle peut s'ajuster, mais aucune trace Python
+   n'est jamais exposée.
+
+### Choix techniques
+
+- **Extension d'`AIProvider`** : `ChatMessage`/`ToolCall` (ai/base.py) forment une représentation
+  **canonique** interne (arguments toujours un dict Python). Chaque fournisseur (Groq,
+  OpenRouter, Ollama) traduit vers/depuis SON propre dialecte sur le fil via une méthode privée
+  (`_to_openai_dict`/`_to_ollama_dict`) : OpenAI/Groq/OpenRouter encodent les arguments en chaîne
+  JSON, Ollama les transmet en dict natif. Ce choix d'adaptateur évite un bug de "faux ami" où
+  une même structure serait mal interprétée selon le fournisseur.
+- **`supports_tools: bool`** sur chaque provider (True pour les 3 déjà intégrés) : contrôlé
+  explicitement par sous-classe, jamais deviné dynamiquement — un futur 4e fournisseur qui
+  n'implémenterait pas `chat_with_tools()` sera rejeté avec un message clair plutôt que de
+  planter en cours de conversation.
+- **Aucune nouvelle dépendance** : tout repose sur `httpx` (déjà utilisé) et le JSON standard,
+  comme le reste de l'AI Gateway (Phase 6).
+- **Limite honnête assumée** : ce dépôt ne dispose d'aucune clé API réelle (Groq/OpenRouter) ni
+  d'Ollama installé dans l'environnement de développement — la conformité exacte de chaque
+  fournisseur à sa documentation officielle "tools" n'a donc pu être vérifiée qu'au niveau du
+  code (tests unitaires avec `httpx.MockTransport`, même pattern que le reste de l'AI Gateway),
+  jamais en conditions réelles de bout en bout. À vérifier par l'utilisateur avec ses propres
+  clés avant un usage de confiance ; toute divergence de format sera un bug isolé dans
+  `_to_openai_dict`/`_to_ollama_dict`/le parsing de la réponse, jamais dans les règles de sécurité
+  ci-dessus (qui ne dépendent d'aucun détail de format).
+
+---
+
 ## Récapitulatif de la stack retenue pour la Phase 1 (fondation)
 
 ```text

@@ -12,15 +12,31 @@ runner = CliRunner()
 
 
 async def _fake_ai_converse(
-    message, provider=None, model=None, reset=False, use_memory=True, project_id=None
+    message, provider=None, model=None, reset=False, use_memory=True, project_id=None, agent=False
 ):
     return {"provider": provider or "groq", "model": "fake-model", "reply": "réponse factice"}
 
 
 async def _fake_ai_converse_error(
-    message, provider=None, model=None, reset=False, use_memory=True, project_id=None
+    message, provider=None, model=None, reset=False, use_memory=True, project_id=None, agent=False
 ):
     raise ProviderError("Fournisseur non configuré (test).")
+
+
+async def _fake_ai_converse_agentic(
+    message, provider=None, model=None, reset=False, use_memory=True, project_id=None, agent=False
+):
+    tool_calls = (
+        [{"name": "search", "arguments": {"query": "s1mone"}, "result": {"results": []}}]
+        if agent
+        else []
+    )
+    return {
+        "provider": provider or "groq",
+        "model": "fake-model",
+        "reply": "réponse agentique" if agent else "réponse normale",
+        "tool_calls": tool_calls,
+    }
 
 
 def test_chat_list_providers_shows_all_registered():
@@ -84,3 +100,53 @@ def test_chat_reset_flag_calls_reset_conversation_before_interactive_loop(monkey
     result = runner.invoke(app, ["chat", "--reset"], input="exit\n")
     assert result.exit_code == 0
     assert called["n"] == 1
+
+
+def test_chat_agent_flag_passed_through_and_reply_shown(monkeypatch):
+    captured = {}
+
+    async def spy(message, provider=None, model=None, reset=False, use_memory=True, project_id=None, agent=False):
+        captured["agent"] = agent
+        return await _fake_ai_converse_agentic(message, provider, model, reset, use_memory, project_id, agent)
+
+    monkeypatch.setattr(cli_main, "ai_converse", spy)
+    result = runner.invoke(app, ["chat", "--agent", "cherche s1mone"])
+    assert result.exit_code == 0
+    assert captured["agent"] is True
+    assert "réponse agentique" in result.stdout
+
+
+def test_chat_without_agent_flag_defaults_to_false(monkeypatch):
+    captured = {}
+
+    async def spy(message, provider=None, model=None, reset=False, use_memory=True, project_id=None, agent=False):
+        captured["agent"] = agent
+        return await _fake_ai_converse_agentic(message, provider, model, reset, use_memory, project_id, agent)
+
+    monkeypatch.setattr(cli_main, "ai_converse", spy)
+    result = runner.invoke(app, ["chat", "salut"])
+    assert result.exit_code == 0
+    assert captured["agent"] is False
+    assert "réponse normale" in result.stdout
+
+
+def test_chat_agent_mode_prints_tool_trace_for_transparency(monkeypatch):
+    monkeypatch.setattr(cli_main, "ai_converse", _fake_ai_converse_agentic)
+    result = runner.invoke(app, ["chat", "--agent", "cherche s1mone"])
+    assert result.exit_code == 0
+    assert "🔧" in result.stdout
+    assert "search" in result.stdout
+
+
+def test_chat_interactive_agent_flag_propagates(monkeypatch):
+    captured = {}
+
+    async def spy(message, provider=None, model=None, reset=False, use_memory=True, project_id=None, agent=False):
+        captured["agent"] = agent
+        return await _fake_ai_converse_agentic(message, provider, model, reset, use_memory, project_id, agent)
+
+    monkeypatch.setattr(cli_main, "ai_converse", spy)
+    result = runner.invoke(app, ["chat", "--agent"], input="salut\nexit\n")
+    assert result.exit_code == 0
+    assert captured["agent"] is True
+    assert "agentique" in result.stdout.lower()

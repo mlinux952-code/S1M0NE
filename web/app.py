@@ -107,6 +107,7 @@ class ChatRequest(BaseModel):
     model: str | None = None
     reset: bool = False
     project_id: str | None = None  # NEXT_STEPS §B.4 : conversation scopée à un projet précis
+    agent: bool = False  # NEXT_STEPS §B.2 : mode agentique (opt-in explicite, jamais par défaut)
 
 
 @asynccontextmanager
@@ -424,6 +425,7 @@ def create_app() -> FastAPI:
                 model=body.model,
                 reset=body.reset,
                 project_id=body.project_id,
+                agent=body.agent,
             )
         except ProviderError as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc

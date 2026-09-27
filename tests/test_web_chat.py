@@ -25,13 +25,13 @@ def isolated_db(tmp_path, monkeypatch):
 
 
 async def _fake_ai_converse(
-    message, provider=None, model=None, reset=False, use_memory=True, project_id=None
+    message, provider=None, model=None, reset=False, use_memory=True, project_id=None, agent=False
 ):
     return {"provider": provider or "groq", "model": "fake-model", "reply": "réponse factice"}
 
 
 async def _fake_ai_converse_error(
-    message, provider=None, model=None, reset=False, use_memory=True, project_id=None
+    message, provider=None, model=None, reset=False, use_memory=True, project_id=None, agent=False
 ):
     raise ProviderError("Fournisseur non configuré (test).")
 
@@ -61,7 +61,7 @@ def test_api_chat_returns_reply(monkeypatch):
 def test_api_chat_forwards_reset_flag(monkeypatch):
     captured = {}
 
-    async def spy(message, provider=None, model=None, reset=False, use_memory=True, project_id=None):
+    async def spy(message, provider=None, model=None, reset=False, use_memory=True, project_id=None, agent=False):
         captured["reset"] = reset
         return {"provider": "groq", "model": "m", "reply": "ok"}
 
@@ -172,3 +172,45 @@ def test_api_chat_project_scoped_conversation_is_isolated():
 def test_api_chat_unknown_project_returns_400():
     r = client.post("/api/chat", json={"message": "salut", "project_id": "id-inconnu"})
     assert r.status_code == 400
+
+
+def test_api_chat_forwards_agent_flag(monkeypatch):
+    captured = {}
+
+    async def spy(message, provider=None, model=None, reset=False, use_memory=True, project_id=None, agent=False):
+        captured["agent"] = agent
+        return {"provider": "groq", "model": "m", "reply": "ok", "tool_calls": []}
+
+    monkeypatch.setattr(web_app_module, "ai_converse", spy)
+    r = client.post("/api/chat", json={"message": "cherche s1mone", "agent": True})
+    assert r.status_code == 200
+    assert captured["agent"] is True
+
+
+def test_api_chat_agent_defaults_to_false(monkeypatch):
+    captured = {}
+
+    async def spy(message, provider=None, model=None, reset=False, use_memory=True, project_id=None, agent=False):
+        captured["agent"] = agent
+        return {"provider": "groq", "model": "m", "reply": "ok"}
+
+    monkeypatch.setattr(web_app_module, "ai_converse", spy)
+    r = client.post("/api/chat", json={"message": "salut"})
+    assert r.status_code == 200
+    assert captured["agent"] is False
+
+
+def test_api_chat_returns_tool_calls_when_agent_mode_used(monkeypatch):
+    async def spy(message, provider=None, model=None, reset=False, use_memory=True, project_id=None, agent=False):
+        return {
+            "provider": "groq",
+            "model": "m",
+            "reply": "voilà",
+            "tool_calls": [{"name": "search", "arguments": {"query": "x"}, "result": {"results": []}}],
+        }
+
+    monkeypatch.setattr(web_app_module, "ai_converse", spy)
+    r = client.post("/api/chat", json={"message": "cherche x", "agent": True})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["tool_calls"][0]["name"] == "search"

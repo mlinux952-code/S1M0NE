@@ -463,3 +463,354 @@ def test_reset_conversation_with_project_id_only_clears_that_project(monkeypatch
 
     assert gateway_module.get_conversation_history(project_id=project_id) == []
     assert len(gateway_module.get_conversation_history()) == 2
+
+
+# --- Mode agentique (NEXT_STEPS §B.2) -----------------------------------------------------------
+
+
+class _FakeAgentProvider(AIProvider):
+    """Fournisseur factice qui supporte chat_with_tools() : rejoue une séquence de réponses
+    scriptées (une par appel), pour tester la boucle d'appel d'outils de ai/gateway.py sans
+    dépendre d'un vrai fournisseur ni d'un vrai modèle."""
+
+    name = "fake-agent"
+    description = "Fournisseur factice agentique (test uniquement)."
+    default_model = "fake-agent-model"
+    supports_tools = True
+
+    def __init__(self, scripted_responses, configured: bool = True) -> None:
+        self._responses = list(scripted_responses)
+        self._configured = configured
+        self.calls: list[list] = []
+
+    def is_configured(self) -> bool:
+        return self._configured
+
+    def setup_hint(self) -> str:
+        return "Configure le fournisseur factice agentique (test uniquement)."
+
+    async def chat(self, messages, model=None) -> str:
+        raise NotImplementedError
+
+    async def chat_with_tools(self, messages, tools, model=None):
+        self.calls.append(list(messages))
+        return self._responses.pop(0)
+
+
+def test_chat_with_tools_no_tool_call_returns_final_reply_immediately(monkeypatch):
+    from ai.base import ToolCall  # noqa: F401  (import vérifie juste la dispo pour ce module)
+
+    fake = _FakeAgentProvider([ChatMessage(role="assistant", content="  Bonjour !  ")])
+    monkeypatch.setattr(gateway_module, "_PROVIDERS", {"fake-agent": fake})
+
+    outcome = asyncio.run(gateway_module.converse("salut", provider="fake-agent", agent=True))
+    assert outcome["reply"] == "Bonjour !"
+    assert outcome["tool_calls"] == []
+    assert len(fake.calls) == 1
+
+
+def test_agent_mode_executes_tool_call_then_returns_final_reply(monkeypatch):
+    from ai.base import ToolCall
+
+    async def fake_search_all(query, limit_per_source=10, sources=None):
+        return {"results": [{"name": "s1mone"}], "errors": {}}
+
+    import connectors.engine as engine_module
+
+    monkeypatch.setattr(engine_module, "search_all", fake_search_all)
+
+    responses = [
+        ChatMessage(
+            role="assistant",
+            content=None,
+            tool_calls=[ToolCall(id="call-1", name="search", arguments={"query": "s1mone"})],
+        ),
+        ChatMessage(role="assistant", content="J'ai trouvé s1mone."),
+    ]
+    fake = _FakeAgentProvider(responses)
+    monkeypatch.setattr(gateway_module, "_PROVIDERS", {"fake-agent": fake})
+
+    outcome = asyncio.run(
+        gateway_module.converse("cherche s1mone", provider="fake-agent", agent=True)
+    )
+    assert outcome["reply"] == "J'ai trouvé s1mone."
+    assert len(outcome["tool_calls"]) == 1
+    assert outcome["tool_calls"][0]["name"] == "search"
+    assert outcome["tool_calls"][0]["result"]["results"] == [{"name": "s1mone"}]
+    # Deuxième appel au fournisseur : la conversation doit contenir le message tool avec le
+    # résultat, pour que le modèle puisse s'en servir.
+    second_call_messages = fake.calls[1]
+    assert any(m.role == "tool" and m.tool_call_id == "call-1" for m in second_call_messages)
+
+
+def test_agent_mode_stops_after_max_rounds_without_fabricating_an_answer(monkeypatch):
+    from ai.base import ToolCall
+
+    async def fake_search_all(query, limit_per_source=10, sources=None):
+        return {"results": [], "errors": {}}
+
+    import connectors.engine as engine_module
+
+    monkeypatch.setattr(engine_module, "search_all", fake_search_all)
+
+    # Le modèle rappelle toujours un outil, jamais de réponse finale : la boucle doit s'arrêter
+    # honnêtement à AGENT_MAX_TOOL_ROUNDS plutôt que de tourner indéfiniment ou d'inventer.
+    always_tool_call = ChatMessage(
+        role="assistant",
+        content=None,
+        tool_calls=[ToolCall(id="call-x", name="search", arguments={"query": "x"})],
+    )
+    fake = _FakeAgentProvider([always_tool_call] * gateway_module.AGENT_MAX_TOOL_ROUNDS)
+    monkeypatch.setattr(gateway_module, "_PROVIDERS", {"fake-agent": fake})
+
+    outcome = asyncio.run(gateway_module.converse("boucle", provider="fake-agent", agent=True))
+    assert "n'ai pas réussi à conclure" in outcome["reply"]
+    assert len(outcome["tool_calls"]) == gateway_module.AGENT_MAX_TOOL_ROUNDS
+    assert len(fake.calls) == gateway_module.AGENT_MAX_TOOL_ROUNDS
+
+
+def test_agent_mode_rejects_provider_without_tool_support(monkeypatch):
+    fake = _FakeProvider(reply="peu importe")  # supports_tools=False par défaut
+    monkeypatch.setattr(gateway_module, "_PROVIDERS", {"fake": fake})
+
+    with pytest.raises(ProviderError, match="ne supporte pas le mode agentique"):
+        asyncio.run(gateway_module.converse("salut", provider="fake", agent=True))
+
+
+def test_agent_mode_requires_configured_provider(monkeypatch):
+    fake = _FakeAgentProvider([ChatMessage(role="assistant", content="ok")], configured=False)
+    monkeypatch.setattr(gateway_module, "_PROVIDERS", {"fake-agent": fake})
+
+    with pytest.raises(ProviderError, match="factice agentique"):
+        asyncio.run(gateway_module.converse("salut", provider="fake-agent", agent=True))
+
+
+def test_agent_mode_only_persists_final_reply_not_tool_exchanges(monkeypatch):
+    from ai.base import ToolCall
+
+    async def fake_search_all(query, limit_per_source=10, sources=None):
+        return {"results": [], "errors": {}}
+
+    import connectors.engine as engine_module
+
+    monkeypatch.setattr(engine_module, "search_all", fake_search_all)
+
+    responses = [
+        ChatMessage(
+            role="assistant",
+            content=None,
+            tool_calls=[ToolCall(id="call-1", name="search", arguments={"query": "x"})],
+        ),
+        ChatMessage(role="assistant", content="Réponse finale."),
+    ]
+    fake = _FakeAgentProvider(responses)
+    monkeypatch.setattr(gateway_module, "_PROVIDERS", {"fake-agent": fake})
+
+    asyncio.run(gateway_module.converse("cherche x", provider="fake-agent", agent=True))
+    history = gateway_module.get_conversation_history()
+    assert [m.content for m in history] == ["cherche x", "Réponse finale."]
+    assert all(m.tool_calls is None for m in history)
+
+
+def test_agent_system_prompt_mentions_read_only_tools(monkeypatch):
+    fake = _FakeAgentProvider([ChatMessage(role="assistant", content="ok")])
+    monkeypatch.setattr(gateway_module, "_PROVIDERS", {"fake-agent": fake})
+
+    asyncio.run(gateway_module.converse("salut", provider="fake-agent", agent=True))
+    system_message = fake.calls[0][0]
+    assert system_message.role == "system"
+    assert "LECTURE SEULE" in system_message.content
+
+
+def test_non_agent_mode_never_sends_agent_system_suffix(monkeypatch):
+    fake = _FakeProvider(reply="ok")
+    monkeypatch.setattr(gateway_module, "_PROVIDERS", {"fake": fake})
+
+    asyncio.run(gateway_module.converse("salut", provider="fake", agent=False))
+    system_message = fake.received_messages[0]
+    assert "Mode agentique activé" not in system_message.content
+
+
+# --- chat_with_tools() par fournisseur (aucun appel réseau réel, httpx.MockTransport) -----------
+
+
+def test_groq_chat_with_tools_parses_tool_call(monkeypatch):
+    import ai.providers.groq as groq_module
+
+    monkeypatch.setattr(groq_module.settings, "get_secret", lambda name, default=None: "fake-key")
+
+    response_json = {
+        "choices": [
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": "call-abc",
+                            "type": "function",
+                            "function": {"name": "search", "arguments": '{"query": "flask"}'},
+                        }
+                    ],
+                }
+            }
+        ]
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = request.read()
+        import json as _json
+
+        payload = _json.loads(body)
+        assert payload["tools"][0]["function"]["name"] == "search"
+        return httpx.Response(200, json=response_json)
+
+    from ai.providers.groq import GroqProvider
+
+    provider = GroqProvider(client=_mock_client(handler))
+    from core.agent_tools import TOOL_SCHEMAS
+
+    result = asyncio.run(
+        provider.chat_with_tools([ChatMessage(role="user", content="cherche flask")], TOOL_SCHEMAS)
+    )
+    assert result.role == "assistant"
+    assert result.tool_calls is not None
+    assert result.tool_calls[0].name == "search"
+    assert result.tool_calls[0].arguments == {"query": "flask"}
+
+
+def test_groq_chat_with_tools_malformed_arguments_never_raises(monkeypatch):
+    import ai.providers.groq as groq_module
+
+    monkeypatch.setattr(groq_module.settings, "get_secret", lambda name, default=None: "fake-key")
+
+    response_json = {
+        "choices": [
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": "call-abc",
+                            "type": "function",
+                            "function": {"name": "search", "arguments": "{pas du json valide"},
+                        }
+                    ],
+                }
+            }
+        ]
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=response_json)
+
+    from ai.providers.groq import GroqProvider
+    from core.agent_tools import TOOL_SCHEMAS
+
+    provider = GroqProvider(client=_mock_client(handler))
+    result = asyncio.run(
+        provider.chat_with_tools([ChatMessage(role="user", content="x")], TOOL_SCHEMAS)
+    )
+    assert "_error" in result.tool_calls[0].arguments
+
+
+def test_groq_chat_with_tools_no_tool_call_returns_plain_content(monkeypatch):
+    import ai.providers.groq as groq_module
+
+    monkeypatch.setattr(groq_module.settings, "get_secret", lambda name, default=None: "fake-key")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=OPENAI_STYLE_SUCCESS)
+
+    from ai.providers.groq import GroqProvider
+    from core.agent_tools import TOOL_SCHEMAS
+
+    provider = GroqProvider(client=_mock_client(handler))
+    result = asyncio.run(
+        provider.chat_with_tools([ChatMessage(role="user", content="salut")], TOOL_SCHEMAS)
+    )
+    assert result.tool_calls is None
+    assert result.content.strip() == "Bonjour ! Je vais bien."
+
+
+def test_openrouter_chat_with_tools_parses_tool_call(monkeypatch):
+    import ai.providers.openrouter as or_module
+
+    monkeypatch.setattr(or_module.settings, "get_secret", lambda name, default=None: "fake-key")
+
+    response_json = {
+        "choices": [
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": "call-1",
+                            "type": "function",
+                            "function": {"name": "run_command", "arguments": '{"command": "pwd"}'},
+                        }
+                    ],
+                }
+            }
+        ]
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=response_json)
+
+    from ai.providers.openrouter import OpenRouterProvider
+    from core.agent_tools import TOOL_SCHEMAS
+
+    provider = OpenRouterProvider(client=_mock_client(handler))
+    result = asyncio.run(
+        provider.chat_with_tools([ChatMessage(role="user", content="où suis-je ?")], TOOL_SCHEMAS)
+    )
+    assert result.tool_calls[0].name == "run_command"
+    assert result.tool_calls[0].arguments == {"command": "pwd"}
+
+
+def test_ollama_chat_with_tools_parses_native_dict_arguments(monkeypatch):
+    response_json = {
+        "message": {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [{"function": {"name": "search", "arguments": {"query": "ollama"}}}],
+        }
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=response_json)
+
+    from ai.providers.ollama import OllamaProvider
+    from core.agent_tools import TOOL_SCHEMAS
+
+    provider = OllamaProvider(client=_mock_client(handler))
+    result = asyncio.run(
+        provider.chat_with_tools([ChatMessage(role="user", content="cherche ollama")], TOOL_SCHEMAS)
+    )
+    assert result.tool_calls[0].name == "search"
+    assert result.tool_calls[0].arguments == {"query": "ollama"}
+    assert result.tool_calls[0].id  # un id local a été généré, même si Ollama n'en fournit pas
+
+
+def test_ollama_chat_with_tools_no_tool_call_returns_plain_content(monkeypatch):
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"message": {"role": "assistant", "content": "Bonjour !"}})
+
+    from ai.providers.ollama import OllamaProvider
+    from core.agent_tools import TOOL_SCHEMAS
+
+    provider = OllamaProvider(client=_mock_client(handler))
+    result = asyncio.run(
+        provider.chat_with_tools([ChatMessage(role="user", content="salut")], TOOL_SCHEMAS)
+    )
+    assert result.tool_calls is None
+    assert result.content == "Bonjour !"
+
+
+def test_all_three_providers_declare_supports_tools_true():
+    assert GroqProvider.supports_tools is True
+    assert OpenRouterProvider.supports_tools is True
+    assert OllamaProvider.supports_tools is True

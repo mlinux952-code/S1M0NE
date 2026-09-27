@@ -6,19 +6,42 @@ modeste. Un petit modèle (1B-3B, quantifié) peut fonctionner mais restera lent
 tokens/seconde). Ce n'est pas fait pour un usage confortable au quotidien, plutôt pour tester le
 fonctionnement hors-ligne/privé. Le modèle par défaut ci-dessous (llama3.2:1b) est le plus petit
 modèle généraliste raisonnable disponible sur Ollama au moment de l'écriture.
+
+NEXT_STEPS.md §B.2 : Ollama expose nativement un champ "tools" sur `/api/chat` (depuis 0.3, bien
+avant la rédaction de ce module) au format proche d'OpenAI, avec une différence clé : les
+arguments d'un appel d'outil sont transmis en dict JSON natif, jamais en chaîne encodée — d'où
+un `_to_ollama_dict()` dédié plutôt que de réutiliser celui de Groq/OpenRouter. Un petit modèle
+1B a rarement été entraîné pour appeler des outils de façon fiable : le mode agentique reste
+disponible avec Ollama mais sans garantie de résultat utile sur un modèle aussi réduit — c'est un
+choix de l'utilisateur, jamais bloqué ici (mega-prompt : dire la vérité, ne jamais décider à sa
+place).
 """
 
 from __future__ import annotations
 
+from typing import Any
+
 import httpx
 
-from ai.base import AIProvider, ChatMessage, ProviderError
+from ai.base import AIProvider, ChatMessage, ProviderError, ToolCall
 from core.config import settings
 from core.logging_setup import get_logger
 
 logger = get_logger("s1mone.ai.ollama")
 
 DEFAULT_BASE_URL = "http://localhost:11434"
+
+
+def _to_ollama_dict(m: ChatMessage) -> dict[str, Any]:
+    """Traduit un ChatMessage canonique (ai/base.py) vers le dialecte natif d'Ollama :
+    `tool_calls[].function.arguments` reste un dict (pas de chaîne JSON, contrairement à
+    OpenAI/Groq/OpenRouter)."""
+    d: dict[str, Any] = {"role": m.role, "content": m.content or ""}
+    if m.tool_calls:
+        d["tool_calls"] = [
+            {"function": {"name": tc.name, "arguments": tc.arguments}} for tc in m.tool_calls
+        ]
+    return d
 
 
 class OllamaProvider(AIProvider):
@@ -28,6 +51,7 @@ class OllamaProvider(AIProvider):
         "(~4 Gio RAM) : à réserver aux tests, modèle recommandé le plus léger possible (1B)."
     )
     default_model = "llama3.2:1b"
+    supports_tools = True  # NEXT_STEPS §B.2 : "tools" natif sur /api/chat depuis Ollama 0.3+.
 
     def __init__(self, client: httpx.AsyncClient | None = None) -> None:
         self._client = client
@@ -49,14 +73,8 @@ class OllamaProvider(AIProvider):
             "RAM), même un modèle 1B reste lent — à réserver aux tests."
         )
 
-    async def chat(self, messages: list[ChatMessage], model: str | None = None) -> str:
+    async def _post(self, payload: dict[str, Any]) -> dict[str, Any]:
         url = f"{self._base_url()}/api/chat"
-        payload = {
-            "model": model or self.default_model,
-            "messages": [m.as_dict() for m in messages],
-            "stream": False,
-        }
-
         owns_client = self._client is None
         client = self._client or httpx.AsyncClient(timeout=120.0)
         try:
@@ -74,14 +92,57 @@ class OllamaProvider(AIProvider):
 
         if response.status_code == 404:
             raise ProviderError(
-                f"Modèle Ollama '{model or self.default_model}' absent. "
-                f"Télécharge-le : 'ollama pull {model or self.default_model}'."
+                f"Modèle Ollama '{payload.get('model')}' absent. "
+                f"Télécharge-le : 'ollama pull {payload.get('model')}'."
             )
         if response.status_code >= 400:
             raise ProviderError(f"Ollama a renvoyé une erreur {response.status_code} : {response.text[:300]}")
 
-        data = response.json()
+        return response.json()
+
+    async def chat(self, messages: list[ChatMessage], model: str | None = None) -> str:
+        payload = {
+            "model": model or self.default_model,
+            "messages": [m.as_dict() for m in messages],
+            "stream": False,
+        }
+        data = await self._post(payload)
         try:
             return data["message"]["content"].strip()
-        except (KeyError, AttributeError) as exc:
+        except (KeyError, AttributeError, TypeError) as exc:
             raise ProviderError(f"Réponse Ollama inattendue (format inconnu) : {data!r}") from exc
+
+    async def chat_with_tools(
+        self, messages: list[ChatMessage], tools: list[dict[str, Any]], model: str | None = None
+    ) -> ChatMessage:
+        payload = {
+            "model": model or self.default_model,
+            "messages": [_to_ollama_dict(m) for m in messages],
+            "tools": tools,
+            "stream": False,
+        }
+        data = await self._post(payload)
+        try:
+            message = data["message"]
+        except (KeyError, TypeError) as exc:
+            raise ProviderError(f"Réponse Ollama inattendue (format inconnu) : {data!r}") from exc
+
+        content = message.get("content")
+        tool_calls: list[ToolCall] = []
+        for i, tc in enumerate(message.get("tool_calls") or []):
+            fn = tc.get("function", {}) if isinstance(tc, dict) else {}
+            args = fn.get("arguments") or {}
+            if isinstance(args, str):
+                import json
+
+                try:
+                    args = json.loads(args)
+                except json.JSONDecodeError:
+                    args = {"_raw_arguments": args, "_error": "arguments JSON invalides"}
+            # Ollama ne fournit pas toujours d'id d'appel : on en génère un stable et local,
+            # suffisant pour faire correspondre le résultat au bon appel dans la même boucle.
+            tool_calls.append(
+                ToolCall(id=tc.get("id") or f"ollama-call-{i}", name=fn.get("name", ""), arguments=args)
+            )
+
+        return ChatMessage(role="assistant", content=content, tool_calls=tool_calls or None)

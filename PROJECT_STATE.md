@@ -269,9 +269,20 @@ attendre de sélection précise à chaque étape (même mandat que pour les Phas
   CLI `s1mone schedule create/list/show/enable/disable/delete`. Nouveau type de tâche `backup`
   (connecte A.2 et B.1 : `s1mone schedule create backup --interval 1d` = sauvegarde SQLite
   automatique quotidienne). `GET /api/schedules` côté web.
-- **Suite immédiate** : B.2 (assistant agentique/function calling — le plus sensible côté
-  sécurité, à traiter avec le même soin que la Phase 9), puis C (page web mémoire, tri/pagination
-  recherche, paquet pip d'exemple).
+- **B.2 — Assistant agentique : faite, testée (85 nouveaux tests au total sur cette session :**
+  **38 pour B.2 seul — `test_agent_tools.py` (16), ajouts `test_ai_gateway.py` (25 : boucle**
+  **agentique + chat_with_tools par fournisseur), `test_cli_chat.py`/`test_web_chat.py` (agent**
+  **flag)).** Catalogue d'outils strictement READ-only (`core/agent_tools.py` : `search`,
+  `run_command` verrouillé en dur à `Permission.READ`, jamais dérivé de la config utilisateur,
+  `confirmed` jamais exposé). `ai/base.py` : `ToolCall` + `ChatMessage` étendu (représentation
+  canonique, arguments toujours un dict) ; chaque provider (Groq/OpenRouter/Ollama) traduit vers
+  son propre dialecte via `chat_with_tools()`. `ai/gateway.py` : `converse(agent=True)`, boucle
+  bornée à `AGENT_MAX_TOOL_ROUNDS=4`, seule la réponse finale persistée en mémoire. CLI
+  `s1mone chat --agent` (transparence : `🔧 outil : ...` affiché avant la réponse). Web : case à
+  cocher "Mode agentique" décochée par défaut sur `/chat`, `agent: bool` sur `POST /api/chat`.
+  Décision de sécurité complète : DECISIONS.md D18 (règles non négociables + limite honnête :
+  jamais testé en conditions réelles, aucune clé API/Ollama disponible dans cet environnement).
+- **Suite immédiate** : C (page web mémoire, tri/pagination recherche, paquet pip d'exemple).
 
 **Important pour l'utilisateur** : `S1MONE_WEB_PASSWORD` doit être choisi et défini par
 l'utilisateur lui-même dans son `.env` sur sa machine réelle (secret que l'agent ne peut pas
