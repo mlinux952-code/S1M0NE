@@ -584,3 +584,56 @@ pour que S1M0NE fonctionne. Conforme à la règle LOW RESOURCE FIRST (§3 du mé
   `/partials/notes-search` (D21/F.1).
 - Suite complète après Catégorie G : **537/537 passed** (25 nouveaux tests : `test_discover.py`,
   `test_cli_discover.py`, `test_web_discover.py`).
+
+## D23 — Catégorie G+ : installation réelle d'une app du catalogue/de la recherche
+
+- **Contexte** : demande explicite de l'utilisateur, formulée en plusieurs échanges après une
+  première incompréhension de ma part (clarifiée via ask_user) — pour chacune des 100 apps du
+  catalogue de découverte (D22), ET pour les résultats de la recherche en direct (`/search`,
+  Phase 5), pouvoir cliquer sur "installer" et que ça exécute VRAIMENT `npm install`/`pip
+  install`/`git clone` sur la machine (pas juste afficher la commande), avec un moyen de
+  l'utiliser ensuite — réponse explicite de l'utilisateur : réutiliser le terminal déjà présent
+  dans S1M0NE plutôt que d'en construire un nouveau.
+- **Tension avec l'architecture de sécurité existante (Phase 9/D10)** : `core/permissions.py`
+  documente explicitement une liste blanche volontairement modeste (pwd/ls/cat/mkdir/cp/mv/rm...),
+  sans aucune commande réseau ni exécution de code tiers. Ajouter `npm`/`pip`/`git` à ce catalogue
+  générique aurait dénaturé son modèle (bornage de CHEMINS à `fs_root`, pas de gestion de paquets).
+  **Décision : nouveau module dédié `core/app_install.py`, séparé de `core/shell_runner.py`, avec
+  ses propres garanties strictes plutôt que d'élargir la liste blanche générique.** `[DECIDED]`
+- **Garanties retenues, non négociables** :
+  1. **Confinement total** : toute installation atterrit sous `fs_root/installed_apps/<site>/<nom>/`
+     — jamais `npm install -g` (global), jamais `pip install` dans le Python/venv de S1M0NE
+     lui-même (npm `--prefix` et pip `--target` permettent tous les deux une installation locale
+     isolée, sans droits particuliers). Confinement vérifié par test (`is_relative_to(fs_root)`).
+  2. **Confirmation explicite obligatoire** (`InstallConfirmationRequiredError` si absente) — même
+     logique que les commandes destructrices existantes (`rm`, D10). Double confirmation côté web
+     (case cachée `confirmed=true` + `hx-confirm` navigateur) pour une action qui exécute du code
+     tiers.
+  3. **SourceForge explicitement exclu** de l'installation automatique : ces projets sont très
+     majoritairement des logiciels Windows/binaires (WinSCP, KeePass, Ventoy...) — aucun
+     gestionnaire de paquets universel ne sait les installer proprement. Honnêteté avant tout :
+     ne jamais prétendre savoir installer ce qu'on ne sait pas installer correctement. Le lien de
+     téléchargement officiel reste affiché.
+  4. **Validation d'URL par domaine officiel** (défense en profondeur) : un dépôt git n'est cloné
+     que si son URL commence par un domaine explicitement autorisé pour ce site
+     (`github.com`, `gitlab.com` + `gitlab.gnome.org`/`gitlab.freedesktop.org` — présents dans le
+     catalogue statique D22 —, `codeberg.org`, `huggingface.co`). Empêche de cloner une URL
+     détournée même si elle provenait d'un résultat de recherche en direct compromis.
+  5. **Risque résiduel assumé et non caché** : `npm install`/`pip install` exécutent par nature du
+     code tiers (scripts d'installation) — S1M0NE ne peut pas éliminer ce risque inhérent à ces
+     écosystèmes, seulement le confiner et rendre la sortie TOUJOURS visible (jamais masquée,
+     succès ou échec).
+  6. **Réutilisation du terminal existant plutôt qu'un nouveau** (demande explicite) : les apps
+     installées atterrissent sous `fs_root`, donc immédiatement explorables avec
+     `s1mone exec run "ls installed_apps"` (Phase 9) — zéro nouvelle surface d'exécution ajoutée
+     pour la partie "inspection après installation".
+- **Historique des installations** : réutilise `core.memory` (niveau `persistent`, une seule clé
+  `installed_apps_log`, liste bornée à 200 entrées) — même pattern que F.2/F.3 (D21), pas de
+  nouvelle table SQL.
+- **Tests sans appel réseau réel** (même convention que les connecteurs, Phase 5) :
+  `subprocess.run` est simulé via `monkeypatch` dans toute la suite automatisée — une vérification
+  manuelle bout-en-bout avec de vraies installations (npm/pip/git réels, dans ce sandbox) a été
+  faite une fois en dehors de pytest pour confirmer que le comportement réel correspond à ce que
+  les tests mockés vérifient.
+- Suite complète après Catégorie G+ : **565/565 passed** (28 nouveaux tests :
+  `test_app_install.py`, `test_cli_app_install.py`, `test_web_app_install.py`).

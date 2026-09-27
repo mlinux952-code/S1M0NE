@@ -164,6 +164,9 @@ exécution.
   réseau.
 - Explicitement **hors périmètre, quel que soit le niveau** : `shutdown`, `reboot`, `dd`, `mkfs`,
   `chmod`/`chown` massifs, `sudo` — ces commandes ne sont jamais ajoutées au catalogue.
+- **Installation d'apps du catalogue de découverte** (`s1mone discover install`, voir plus bas) :
+  exécute réellement `npm install`/`pip install`/`git clone`, donc du code tiers — mêmes garanties
+  de confinement à `fs_root` et de confirmation explicite, voir la section dédiée.
 
 ```bash
 s1mone exec list                    # catalogue complet + niveau du terminal local
@@ -398,6 +401,41 @@ s1mone task submit example-echo --params '{"message": "salut"}'
 `s1mone plugin list` distingue toujours les deux sources (`fichier local` vs `paquet installé`),
 et un `pip uninstall s1mone-plugin-example` suffit à le retirer — aucune trace à nettoyer côté
 S1M0NE. Voir le README du paquet d'exemple pour l'adapter à ton propre plugin.
+
+## Découverte (Catégorie G) — catalogue statique + installation réelle
+
+`s1mone discover` embarque un catalogue **statique** de 100 projets réels (npm, PyPI, GitHub,
+GitLab, Codeberg, Hugging Face, SourceForge), compilé une fois par recherche web et livré avec
+S1M0NE : consultable **hors-ligne**, sans mise à jour automatique. Pour une recherche en direct,
+utilise plutôt `/search` (Phase 5).
+
+```bash
+s1mone discover list --site npm          # parcourir le catalogue
+s1mone discover search "second brain"    # chercher par mot-clé
+s1mone discover sites                    # les 7 sites couverts
+```
+
+**Installer réellement une app** (depuis le catalogue statique OU un résultat de `/search`) :
+
+```bash
+s1mone discover install npm lodash             # npm install --prefix (jamais -g)
+s1mone discover install pypi requests          # pip install --target (jamais dans le venv de S1M0NE)
+s1mone discover install github ollama/ollama --url https://github.com/ollama/ollama
+s1mone discover installed                      # historique des installations
+```
+
+Garanties de sécurité (même esprit que Phase 9/D10) :
+- **Confinement strict** sous `fs_root/installed_apps/<site>/<nom>/` — jamais d'installation
+  globale sur ta machine, jamais dans le Python/venv de S1M0NE lui-même.
+- **Confirmation explicite obligatoire** avant toute exécution (`--yes` en CLI, case à cocher +
+  confirmation navigateur côté web).
+- **SourceForge n'est volontairement PAS installable automatiquement** : ce sont presque
+  toujours des logiciels Windows/binaires, pas des paquets qu'un gestionnaire sait installer
+  proprement — le catalogue affiche uniquement le lien de téléchargement officiel.
+- **Risque assumé et non caché** : `npm install`/`pip install`/`git clone` téléchargent et
+  peuvent exécuter du code tiers (comportement normal de ces écosystèmes) — la sortie complète
+  est toujours affichée, jamais masquée. Une fois installée, une app se parcourt avec le terminal
+  déjà existant : `s1mone exec run "ls installed_apps"`.
 
 ## Recherche multi-sources (Phase 5)
 

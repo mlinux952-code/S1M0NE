@@ -1,0 +1,16 @@
+{% if error %}
+<p class="muted" style="color:#e05a5a;">{{ error }}</p>
+{% elif result %}
+<div class="card">
+    <p>Commande exécutée : <code>{{ result.command_display }}</code></p>
+    {% if result.ok %}
+    <p><span class="badge badge-ok">réussie</span> en {{ result.duration_seconds }}s — installée dans <code>{{ result.install_dir }}</code></p>
+    {% else %}
+    <p style="color:#e05a5a;">échouée (code retour : {{ result.exit_code }})</p>
+    {% endif %}
+    <pre class="terminal-output">{{ result.output }}</pre>
+    <p class="hint">Pour inspecter le contenu installé, utilise le terminal existant de S1M0NE :
+        <code>/terminal</code> — les commandes <code>ls</code>/<code>cat</code> sont bornées à ce
+        même dossier (fs_root).</p>
+</div>
+{% endif %}

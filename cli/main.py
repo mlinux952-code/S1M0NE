@@ -14,6 +14,8 @@ Commandes disponibles :
     s1mone discover list/search/sites -> catalogue statique de 100 projets notables sur les 7
     sites connectés (npm/PyPI/GitHub/GitLab/Codeberg/HuggingFace/SourceForge), embarqué avec
     S1M0NE, consultable hors-ligne, sans mise à jour automatique (Cat. G)
+    s1mone discover install/installed -> installation RÉELLE (npm/pip/git), confinée sous
+    fs_root/installed_apps/, jamais globale sur la machine — confirmation obligatoire (Cat. G+)
 
 Le terminal doit rester utilisable même sans l'interface web (mega-prompt §6) :
 cette CLI ne dépend d'aucun serveur, elle appelle directement les modules core/system.
@@ -1075,6 +1077,80 @@ def discover_sites_cmd() -> None:
 
     for s in available_sites():
         console.print(f"- {s}")
+
+
+@discover_app.command("install")
+def discover_install_cmd(
+    site: str = typer.Argument(..., help="Site : npm, pypi, github, gitlab, codeberg, huggingface (PAS sourceforge)."),
+    name: str = typer.Argument(..., help="Nom du paquet (npm/pypi) ou 'owner/repo' (github/gitlab/codeberg/huggingface)."),
+    url: Optional[str] = typer.Option(None, "--url", help="URL du dépôt (auto-détectée si le nom existe dans le catalogue statique)."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Ne pas demander de confirmation."),
+) -> None:
+    """Installe RÉELLEMENT une app (npm install / pip install / git clone), confinée sous
+    fs_root/installed_apps/ — jamais d'installation globale sur la machine. Cette commande
+    télécharge et exécute du code tiers (comportement normal de npm/pip/git), affiché
+    intégralement, jamais masqué. Utilise ensuite 's1mone exec ls installed_apps/...' (le
+    terminal existant de S1M0NE) pour inspecter ce qui a été installé."""
+    from core.app_install import (
+        InstallConfirmationRequiredError,
+        InvalidNameError,
+        InvalidUrlError,
+        UnsupportedSiteError,
+        install_app,
+    )
+    from core.discover import list_entries
+
+    resolved_url = url
+    if resolved_url is None:
+        for entry in list_entries(site=site):
+            if entry["name"].lower() == name.lower():
+                resolved_url = entry["url"]
+                break
+
+    if not yes:
+        console.print(
+            f"[yellow]Installation réelle de '{name}' ({site}) — télécharge et exécute du code "
+            f"tiers, confiné sous fs_root/installed_apps/.[/yellow]"
+        )
+        if not typer.confirm("Confirmer l'installation ?"):
+            console.print("[grey58]Annulé.[/grey58]")
+            raise typer.Exit(code=0)
+
+    try:
+        result = install_app(site, name, resolved_url, confirmed=True)
+    except (UnsupportedSiteError, InvalidNameError, InvalidUrlError) as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=1) from exc
+    except InstallConfirmationRequiredError as exc:  # ne devrait pas arriver ici (confirmed=True)
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=1) from exc
+
+    status = "[green]réussie[/green]" if result["ok"] else "[red]échouée[/red]"
+    console.print(f"Commande : [dim]{result['command_display']}[/dim]")
+    console.print(f"Installation {status} en {result['duration_seconds']}s dans {result['install_dir']}")
+    console.print(result["output"])
+    if not result["ok"]:
+        raise typer.Exit(code=1)
+
+
+@discover_app.command("installed")
+def discover_installed_cmd() -> None:
+    """Historique des installations réelles effectuées via S1M0NE (plus récentes en premier)."""
+    from core.app_install import list_installed
+
+    entries = list_installed()
+    if not entries:
+        console.print("[grey58]Aucune installation effectuée pour l'instant.[/grey58]")
+        return
+    table = Table(title="Applications installées via S1M0NE")
+    table.add_column("Site")
+    table.add_column("Nom")
+    table.add_column("Statut")
+    table.add_column("Dossier")
+    for e in entries:
+        status = "[green]ok[/green]" if e["ok"] else "[red]échec[/red]"
+        table.add_row(e["site"], e["name"], status, e["install_dir"])
+    console.print(table)
 
 
 @backup_app.command("create")

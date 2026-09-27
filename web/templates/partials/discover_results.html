@@ -2,7 +2,7 @@
 <p class="muted">Aucun résultat{% if query %} pour « {{ query }} »{% endif %}.</p>
 {% else %}
 <table>
-    <tr><th>Nom</th><th>Site</th><th>Catégorie</th><th>Description</th><th>Lien</th></tr>
+    <tr><th>Nom</th><th>Site</th><th>Catégorie</th><th>Description</th><th>Lien</th><th>Installer</th></tr>
     {% for e in results %}
     <tr>
         <td>{{ e.name }}</td>
@@ -10,6 +10,20 @@
         <td>{{ e.category }}</td>
         <td>{{ e.description }}</td>
         <td><a href="{{ e.url }}" target="_blank" rel="noopener noreferrer">ouvrir ↗</a></td>
+        <td>
+            {% if e.site == "sourceforge" %}
+            <span class="muted">non proposé (voir le lien)</span>
+            {% else %}
+            <form hx-post="/api/discover/install" hx-target="#install-output" hx-swap="innerHTML"
+                  hx-confirm="Installer réellement '{{ e.name }}' ? Cela télécharge et exécute du code tiers (npm/pip/git), confiné dans un dossier dédié.">
+                <input type="hidden" name="site" value="{{ e.site }}">
+                <input type="hidden" name="name" value="{{ e.name }}">
+                <input type="hidden" name="url" value="{{ e.url }}">
+                <input type="hidden" name="confirmed" value="true">
+                <button type="submit">Installer</button>
+            </form>
+            {% endif %}
+        </td>
     </tr>
     {% endfor %}
 </table>

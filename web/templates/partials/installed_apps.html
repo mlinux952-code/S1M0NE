@@ -1,0 +1,15 @@
+{% if not entries %}
+<p class="muted">Aucune installation effectuée pour l'instant.</p>
+{% else %}
+<table>
+    <tr><th>Site</th><th>Nom</th><th>Statut</th><th>Dossier</th></tr>
+    {% for e in entries %}
+    <tr>
+        <td><span class="badge">{{ e.site }}</span></td>
+        <td>{{ e.name }}</td>
+        <td>{% if e.ok %}<span class="badge badge-ok">ok</span>{% else %}<span class="badge" style="color:#e05a5a;">échec</span>{% endif %}</td>
+        <td><code>{{ e.install_dir }}</code></td>
+    </tr>
+    {% endfor %}
+</table>
+{% endif %}

@@ -390,6 +390,49 @@ def create_app() -> FastAPI:
             request, "partials/discover_results.html", {"results": results, "query": q}
         )
 
+    @app.post("/api/discover/install", response_class=HTMLResponse)
+    def api_discover_install(
+        request: Request,
+        site: str = Form(...),
+        name: str = Form(...),
+        url: str = Form(""),
+        confirmed: bool = Form(False),
+    ) -> HTMLResponse:
+        """Installe RÉELLEMENT une app (npm/pip/git), confinée sous fs_root/installed_apps/ —
+        voir core/app_install.py pour toutes les garanties de sécurité. `confirmed` doit être
+        explicitement transmis (case à cocher côté formulaire, en plus du hx-confirm côté
+        navigateur) — deux niveaux de confirmation pour une action qui exécute du code tiers."""
+        from core.app_install import (
+            InstallConfirmationRequiredError,
+            InvalidNameError,
+            InvalidUrlError,
+            UnsupportedSiteError,
+            install_app,
+        )
+
+        error: str | None = None
+        result: dict[str, Any] | None = None
+        try:
+            result = install_app(site, name, url or None, confirmed=confirmed)
+        except (UnsupportedSiteError, InvalidNameError, InvalidUrlError) as exc:
+            error = str(exc)
+        except InstallConfirmationRequiredError as exc:
+            error = str(exc)
+
+        return templates.TemplateResponse(
+            request,
+            "partials/install_result.html",
+            {"site": site, "name": name, "error": error, "result": result},
+        )
+
+    @app.get("/partials/installed-apps", response_class=HTMLResponse)
+    def partial_installed_apps(request: Request) -> HTMLResponse:
+        from core.app_install import list_installed
+
+        return templates.TemplateResponse(
+            request, "partials/installed_apps.html", {"entries": list_installed()}
+        )
+
     @app.get("/api/notifications")
     def api_notifications_list(unread_only: bool = False, limit: int = 50) -> dict[str, Any]:
         return {

@@ -25,4 +25,11 @@
 <div id="discover-results" style="margin-top:1rem;">
     <p class="muted">Chargement…</p>
 </div>
+
+<div id="install-output" style="margin-top:1rem;"></div>
+
+<h2 style="margin-top:2rem;">Applications installées via S1M0NE</h2>
+<div id="installed-apps-list" hx-get="/partials/installed-apps" hx-trigger="load" hx-swap="innerHTML">
+    <p class="muted">Chargement…</p>
+</div>
 {% endblock %}

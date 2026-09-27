@@ -397,6 +397,21 @@ attendre de sélection précise à chaque étape (même mandat que pour les Phas
       renvoi explicite vers `/search` pour qui veut du temps réel (transparence).
     - Suite complète : **537/537 passed** (25 nouveaux tests : `test_discover.py`,
       `test_cli_discover.py`, `test_web_discover.py`).
+  - **Catégorie G+ — installation réelle d'une app (npm/pip/git), confinée : terminée.** Demande
+    explicite de l'utilisateur après clarification (voir DECISIONS.md D23). Nouveau module
+    `core/app_install.py`, séparé du système de permissions générique (Phase 9) pour ne pas le
+    dénaturer :
+    - Confinement strict sous `fs_root/installed_apps/<site>/<nom>/` (jamais global, jamais dans
+      le venv de S1M0NE) ; confirmation explicite obligatoire ; SourceForge exclu (logiciels
+      Windows/binaires, aucune installation automatique honnête possible) ; validation de l'URL
+      par domaine officiel autorisé par site.
+    - CLI : `s1mone discover install <site> <nom> [--url] [--yes]`, `s1mone discover installed`.
+    - Web : bouton "Installer" sur `/discover` ET sur `/search` (résultats en direct), sortie
+      affichée en style terminal ; historique visible sur `/discover`.
+    - Réutilise le terminal déjà existant (`s1mone exec run "ls installed_apps"`) pour inspecter
+      le contenu installé — aucune nouvelle surface d'exécution pour cette partie.
+    - Suite complète : **565/565 passed** (28 nouveaux tests : `test_app_install.py`,
+      `test_cli_app_install.py`, `test_web_app_install.py`).
   - **Post-catégorie D, deux correctifs suite à la mise à jour réelle chez l'utilisateur** :
     1. `install.sh` et `scripts/*.sh` avaient perdu leur bit exécutable dans un commit précédent
        (bug de l'environnement de travail de l'agent) → `./install.sh` échouait avec "Permission
