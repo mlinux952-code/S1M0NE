@@ -42,6 +42,14 @@ extensible vers l'IA — conçue en priorité pour tourner confortablement sur u
 réelle.** Le détail complet, phase par phase, est dans [`PROJECT_STATE.md`](./PROJECT_STATE.md) ;
 les pistes envisagées pour la suite sont dans [`NEXT_STEPS.md`](./NEXT_STEPS.md).
 
+**Après le plan initial — consolidation en cours (`NEXT_STEPS.md` §A) :**
+- **A.1 — Authentification web : faite.** Mot de passe facultatif (`S1MONE_WEB_PASSWORD`) pour
+  protéger l'interface web (voir section dédiée ci-dessous).
+- **A.2 — Sauvegarde de la base SQLite : faite.** `s1mone backup create` / `s1mone backup list`
+  (voir section dédiée ci-dessous).
+- **A.4 — Vérification proactive des fournisseurs IA : faite.** `s1mone chat --check` (voir
+  section Assistant IA ci-dessous).
+
 ## Installation (première fois)
 
 ```bash
@@ -111,6 +119,14 @@ ajouter toi-même dans ton fichier `.env` (jamais commité).
 Le fournisseur par défaut se change dans `config/config.toml`, section `[ai] default_provider`,
 ou ponctuellement avec `s1mone chat --provider openrouter "..."`.
 
+Les catalogues de modèles gratuits changent régulièrement (un modèle Groq/OpenRouter utilisable
+aujourd'hui peut être retiré du tier gratuit demain). Pour vérifier que chaque fournisseur
+configuré répond vraiment (avant d'en avoir besoin en plein milieu d'une conversation) :
+
+```bash
+s1mone chat --check     # envoie un vrai message minimal à chaque fournisseur configuré
+```
+
 ## Mémoire (Phase 7)
 
 La conversation avec l'assistant IA est mémorisée en base SQLite locale (table `memory`) : elle
@@ -155,6 +171,51 @@ s1mone exec run "pwd"
 s1mone exec run "mkdir sous_dossier"
 s1mone exec run "rm fichier.txt"    # demande confirmation, sauf --yes/-y
 ```
+
+## Authentification web (A.1)
+
+Par défaut, l'interface web (`s1mone web`) reste ouverte sans mot de passe, comme depuis la
+Phase 2 — pratique en usage strictement local. Si la machine est accessible depuis un réseau
+(ou plus), définis un mot de passe pour la protéger :
+
+```bash
+# dans .env (jamais commité) :
+S1MONE_WEB_PASSWORD=choisis-un-mot-de-passe-solide
+```
+
+Une fois défini, `/login` demande ce mot de passe avant tout accès (sauf `/login` et les fichiers
+statiques). La session reste valide 7 jours (cookie signé, aucune donnée de session stockée côté
+serveur) ; `/logout` (lien "Déconnexion" dans le menu) la termine avant l'échéance. Sans mot de
+passe défini, un avertissement s'affiche au démarrage de `s1mone web` pour le rappeler.
+
+## Sauvegardes (A.2)
+
+Toute la mémoire de S1M0NE (tâches, conversations IA, cache) vit dans un seul fichier SQLite
+(`data/s1mone.db` par défaut). Pour s'en prémunir contre une perte accidentelle :
+
+```bash
+s1mone backup create    # sauvegarde horodatée dans data/backups/
+s1mone backup list       # liste les sauvegardes existantes
+```
+
+Les 10 sauvegardes les plus récentes sont conservées automatiquement (les plus anciennes sont
+purgées) — configurable dans `config.toml`, section `[backup]` (`dir`, `keep`).
+
+## Démarrage automatique (A.3)
+
+Pour que S1M0NE démarre tout seul (à la connexion, voire dès le boot de la machine) et redémarre
+automatiquement s'il plante, sans droits administrateur (`systemd --user`) :
+
+```bash
+./scripts/install_autostart.sh     # installe et démarre le service
+systemctl --user status s1mone     # vérifier qu'il tourne
+journalctl --user -u s1mone -f     # logs en direct
+./scripts/uninstall_autostart.sh   # désinstalle proprement
+```
+
+Pour un démarrage dès le boot, avant toute connexion (facultatif, sans droits root) :
+`loginctl enable-linger $USER`. Si `systemd` n'est pas disponible sur ta machine, le script
+l'indique clairement et propose une alternative (`cron @reboot`).
 
 ## Plugins (Phase 8)
 

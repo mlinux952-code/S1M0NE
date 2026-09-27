@@ -205,14 +205,46 @@ fait :
   local, conflit avec un composant intégré (le plugin est ignoré), plugin cassé n'empêche pas le
   chargement des autres, désactivation par préfixe `_`, intégration CLI/web bout en bout.
 
-## Prochaine étape
+## PHASE POST-PLAN — Consolidation (NEXT_STEPS.md §A)
 
-**Les 9 phases du plan initial (méga-prompt) sont maintenant toutes terminées, testées ET
-validées sur la machine réelle** (Phase 8 confirmée : `s1mone plugin list` détecte l'exemple
-activé, `s1mone search test --sources hello` renvoie son résultat, `s1mone task submit echo`
-s'exécute avec succès — transcript complet reçu et vérifié).
+**Les 9 phases du plan initial (méga-prompt) sont terminées, testées ET validées sur la machine
+réelle.** L'utilisateur a redonné le mandat "tous et plus encore" : implémentation des pistes de
+`NEXT_STEPS.md` dans l'ordre A (consolidation) → B (nouvelles capacités) → C (polish), sans
+attendre de sélection précise à chaque étape (même mandat que pour les Phases 7/8/9).
 
-L'utilisateur a marqué une pause. Les pistes réfléchies pour la suite (au-delà du plan initial)
-sont détaillées dans [`NEXT_STEPS.md`](./NEXT_STEPS.md) — à proposer/discuter à la reprise,
-sans grande implémentation supplémentaire tant qu'il n'a pas donné le feu vert sur une direction
-(contrairement aux Phases 7/8/9 où le mandat "tout, vas-y" était déjà acquis).
+- **A.1 — Authentification web : faite, testée (14 tests : 7 `core/auth.py` + 7 `web/app.py`).**
+  Cookie de session signé HMAC-SHA256 sans dépendance de session store (`core/auth.py`), opt-in
+  via `S1MONE_WEB_PASSWORD` dans `.env` (comportement historique inchangé si absent, juste un
+  avertissement au démarrage). Middleware FastAPI protégeant tout sauf `/login`/`/static/`.
+  Dépendance ajoutée : `python-multipart` (requise par Starlette pour parser tout formulaire
+  HTML, même urlencoded simple). Voir DECISIONS.md §D14 pour le détail des alternatives écartées.
+- **A.2 — Sauvegarde SQLite : faite, testée (8 tests, `tests/test_backup.py`).**
+  `s1mone backup create` (copie cohérente via `sqlite3.Connection.backup`, jamais un `cp` brut
+  qui pourrait copier un fichier à moitié écrit) et `s1mone backup list`. Purge automatique
+  au-delà de `[backup] keep` (défaut 10). Bug détecté et corrigé en test manuel : deux sauvegardes
+  dans la même seconde s'écrasaient silencieusement (résolution `strftime` = la seconde) —
+  résolu par un suffixe numérique auto-incrémenté en cas de collision, couvert par un test dédié.
+- **A.4 — Vérification proactive des fournisseurs IA : faite, testée (5 tests ajoutés dans
+  `tests/test_ai_gateway.py`).** `s1mone chat --check` envoie un vrai message minimal à chaque
+  fournisseur configuré et rapporte OK/ÉCHEC + détail — pensé spécifiquement pour détecter à
+  l'avance un modèle retiré du catalogue gratuit (le bug Groq vécu en Phase 6), plutôt que de le
+  découvrir en pleine conversation. Jamais appelé automatiquement (consommerait du quota sans
+  demande explicite).
+- **A.3 — Démarrage automatique au boot : fait (pas de test automatisé — script shell qui parle à
+  systemd, non testable en sandbox sans session utilisateur réelle ; testé manuellement en
+  sandbox jusqu'à la limite du possible : génération du fichier de service correcte, détection
+  propre de l'absence de bus de session avec message actionnable).**
+  `scripts/install_autostart.sh` génère `~/.config/systemd/user/s1mone.service` (à partir de
+  `scripts/s1mone.service.template`) et l'active via `systemctl --user enable --now`. Aucun droit
+  root requis. `scripts/uninstall_autostart.sh` pour la désinstallation symétrique. Pour démarrer
+  avant toute connexion (pas juste "à la connexion") : `loginctl enable-linger $USER`, mentionné
+  dans le message de sortie du script plutôt qu'automatisé (modifie un réglage global du compte
+  utilisateur, décision qui doit rester explicite).
+- **Suite immédiate** : évaluation des pistes B (tâches récurrentes, assistant agentique/function
+  calling, notifications, mémoire "project") et C (page web mémoire, tri/pagination recherche,
+  paquet pip d'exemple) selon l'ordre de `NEXT_STEPS.md`.
+
+**Important pour l'utilisateur** : `S1MONE_WEB_PASSWORD` doit être choisi et défini par
+l'utilisateur lui-même dans son `.env` sur sa machine réelle (secret que l'agent ne peut pas
+connaître ni choisir à sa place) — sans cette variable, l'interface web reste ouverte comme avant
+avec juste un avertissement au démarrage, rien ne casse.

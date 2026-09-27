@@ -1,0 +1,27 @@
+# Gabarit de service systemd --user pour S1M0NE (NEXT_STEPS.md §A.3 — démarrage automatique).
+#
+# Ne pas installer ce fichier directement : utilise `scripts/install_autostart.sh`, qui
+# remplace le chemin du projet par sa valeur réelle et copie le résultat dans
+# ~/.config/systemd/user/s1mone.service.
+#
+# Choix : systemd --user (pas de service système root) — aucun droit administrateur nécessaire,
+# cohérent avec la philosophie "utilisateur unique, machine personnelle" du projet. Démarre à la
+# connexion de l'utilisateur ; pour un démarrage dès le boot (sans connexion), voir
+# `loginctl enable-linger` (affiché par le script d'installation).
+
+[Unit]
+Description=S1M0NE - plateforme personnelle intelligente (interface web + worker de taches)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=__PROJECT_DIR__
+ExecStart=__PROJECT_DIR__/venv/bin/s1mone web
+Restart=on-failure
+RestartSec=5
+# Le fichier .env (clés API, mot de passe web...) est lu directement par S1M0NE au démarrage
+# (core/config.py) : pas besoin d'EnvironmentFile ici.
+
+[Install]
+WantedBy=default.target

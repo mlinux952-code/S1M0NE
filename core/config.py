@@ -212,6 +212,30 @@ class Settings:
         relative = self.raw_toml.get("plugins", {}).get("dir", "plugins_local")
         return (PROJECT_ROOT / relative).resolve()
 
+    @property
+    def backups_dir(self) -> Path:
+        """Dossier des sauvegardes SQLite (NEXT_STEPS.md §A.2). Par défaut `data/backups`
+        (configurable : `[backup] dir` dans config.toml)."""
+        relative = self.raw_toml.get("backup", {}).get("dir", "data/backups")
+        return (PROJECT_ROOT / relative).resolve()
+
+    @property
+    def backups_keep(self) -> int:
+        """Nombre de sauvegardes conservées avant purge automatique des plus anciennes."""
+        return int(self.raw_toml.get("backup", {}).get("keep", 10))
+
+    @property
+    def web_password(self) -> str | None:
+        """Mot de passe du terminal web (NEXT_STEPS.md §A.1). Uniquement via .env/environnement
+        (jamais config.toml, jamais loggué en clair — voir SENSITIVE_KEY_HINTS). Si absent,
+        l'interface web reste ouverte sans authentification (comportement historique, un
+        avertissement est affiché au démarrage de `s1mone web`)."""
+        return self.get_secret("S1MONE_WEB_PASSWORD") or None
+
+    @property
+    def web_auth_enabled(self) -> bool:
+        return bool(self.web_password)
+
     def get_secret(self, name: str, default: str | None = None) -> str | None:
         """Lit un secret : priorité à l'environnement système, puis .env, jamais config.toml."""
         return os.environ.get(name) or self.env_values.get(name) or default

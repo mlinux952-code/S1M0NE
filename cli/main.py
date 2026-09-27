@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import json
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 import typer
@@ -23,12 +24,14 @@ from rich.table import Table
 
 from ai.base import ProviderError
 from ai.gateway import available_providers
+from ai.gateway import check_all_providers
 from ai.gateway import converse as ai_converse
 from ai.gateway import reset_conversation
 from connectors.engine import available_connectors, search_all
 from core import memory as memory_module
 from core import permissions
 from core.config import settings
+from core.db import backup_db, list_backups
 from core.shell_runner import run_command as run_shell_command
 from core.timeutil import format_timestamp
 from plugins.manager import list_plugins
@@ -63,8 +66,11 @@ app.add_typer(exec_app, name="exec")
 plugin_app = typer.Typer(help="Plugins tiers (Phase 8) : connecteurs et types de tâches additionnels.")
 app.add_typer(plugin_app, name="plugin")
 
+backup_app = typer.Typer(help="Sauvegarde de la base SQLite (mémoire, tâches, cache).")
+app.add_typer(backup_app, name="backup")
 
-_COMMANDS_NEEDING_DB = {"status", "task", "search", "chat", "memory"}
+
+_COMMANDS_NEEDING_DB = {"status", "task", "search", "chat", "memory", "backup"}
 
 
 @app.callback()
@@ -256,6 +262,15 @@ def chat(
     list_providers: bool = typer.Option(
         False, "--list-providers", help="Affiche les fournisseurs IA disponibles et leur statut."
     ),
+    check: bool = typer.Option(
+        False,
+        "--check",
+        help=(
+            "Envoie un vrai message minimal à chaque fournisseur configuré pour vérifier qu'il "
+            "répond (détecte un modèle retiré du catalogue AVANT un vrai usage). Consomme un peu "
+            "de quota gratuit."
+        ),
+    ),
     reset: bool = typer.Option(
         False, "--reset", help="Efface la conversation mémorisée avant d'envoyer ce message."
     ),
@@ -281,6 +296,32 @@ def chat(
         for p in available_providers():
             if not p["configured"]:
                 console.print(f"[grey58]{p['name']} : {p['setup_hint']}[/grey58]")
+        return
+
+    if check:
+        console.print(
+            "[grey58]Vérification en cours (un vrai message minimal par fournisseur "
+            "configuré)...[/grey58]"
+        )
+        results = asyncio.run(check_all_providers())
+        table = Table(title="S1M0NE — vérification des fournisseurs IA")
+        table.add_column("Fournisseur")
+        table.add_column("Statut")
+        table.add_column("Modèle testé")
+        table.add_column("Détail", max_width=60)
+        any_configured = False
+        for r in results:
+            if not r["configured"]:
+                table.add_row(str(r["provider"]), "[grey58]non configuré[/grey58]", "-", "")
+                continue
+            any_configured = True
+            status = "[green]OK[/green]" if r["ok"] else "[bold red]ÉCHEC[/bold red]"
+            table.add_row(str(r["provider"]), status, str(r["model"]), str(r["detail"]))
+        console.print(table)
+        if not any_configured:
+            console.print(
+                "[yellow]Aucun fournisseur configuré. Voir 's1mone chat --list-providers'.[/yellow]"
+            )
         return
 
     if message and message.strip():
@@ -593,6 +634,34 @@ def plugin_list() -> None:
         f"Connecteurs disponibles (intégrés + plugins) : {[c['name'] for c in available_connectors()]}"
     )
     console.print(f"Types de tâches disponibles (intégrés + plugins) : {available_types()}")
+
+
+@backup_app.command("create")
+def backup_create() -> None:
+    """Crée une sauvegarde horodatée de la base SQLite (mémoire, tâches, cache). Purge
+    automatiquement les plus anciennes au-delà de config.toml [backup] keep (défaut : 10)."""
+    try:
+        path = backup_db()
+    except FileNotFoundError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=1) from exc
+    console.print(f"[green]Sauvegarde créée :[/green] {path}")
+
+
+@backup_app.command("list")
+def backup_list() -> None:
+    """Liste les sauvegardes existantes (les plus récentes d'abord)."""
+    backups = list_backups()
+    table = Table(title="S1M0NE — sauvegardes")
+    table.add_column("Fichier")
+    table.add_column("Taille")
+    table.add_column("Créée à")
+    for b in backups:
+        size_kb = b["size_bytes"] / 1024
+        table.add_row(Path(b["path"]).name, f"{size_kb:.1f} Ko", _fmt_ts(b["created_at"]))
+    console.print(table)
+    if not backups:
+        console.print(f"[grey58]Aucune sauvegarde. Dossier : {settings.backups_dir}[/grey58]")
 
 
 def main() -> None:

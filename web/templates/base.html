@@ -19,6 +19,7 @@
             <span class="disabled" title="Arrive en Phase 8">Plugins</span>
             <span class="disabled" title="Disponible en CLI : s1mone memory list/show/forget (page web à venir)">Mémoire</span>
             <span class="disabled" title="Bientôt">Paramètres</span>
+            {% if auth_enabled() %}<a href="/logout">Déconnexion</a>{% endif %}
         </nav>
     </header>
     <main class="content">

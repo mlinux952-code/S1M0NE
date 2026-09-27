@@ -26,6 +26,8 @@ __all__ = [
     "converse",
     "reset_conversation",
     "get_conversation_history",
+    "check_provider",
+    "check_all_providers",
 ]
 
 # Registre statique des fournisseurs disponibles (même pattern que connectors/engine.py).
@@ -166,3 +168,58 @@ async def converse(
         _save_history(history)
 
     return outcome
+
+
+# --- Vérification proactive (NEXT_STEPS.md §A.4) --------------------------------------------
+#
+# Bug réel vécu en Phase 6 : Groq a retiré des modèles de son accès gratuit standard sans
+# prévenir, découvert seulement au premier vrai message ("model_not_found" en plein usage,
+# jamais à la configuration). `check_provider` fait un vrai appel API minimal pour détecter ce
+# genre de problème AVANT que l'utilisateur ne le découvre en plein milieu d'une conversation.
+# Volontairement jamais appelé automatiquement en arrière-plan (consomme du quota gratuit) :
+# seulement à la demande explicite ('s1mone chat --check').
+
+
+async def check_provider(name: str) -> dict[str, object]:
+    """Vérifie qu'un fournisseur répond réellement avec le modèle configuré.
+
+    Ne lève jamais d'exception : retourne toujours un dict {"provider", "configured", "model",
+    "ok", "detail"} exploitable par la CLI/le web, même en cas d'échec.
+    """
+    provider = resolve_provider(name)
+    configured = provider.is_configured()
+    if not configured:
+        return {
+            "provider": provider.name,
+            "configured": False,
+            "model": None,
+            "ok": False,
+            "detail": provider.setup_hint(),
+        }
+
+    model = settings.ai_provider_model(provider.name) or provider.default_model
+    try:
+        await provider.chat(
+            [ChatMessage(role="user", content="Réponds uniquement par le mot ok.")],
+            model=model,
+        )
+        return {
+            "provider": provider.name,
+            "configured": True,
+            "model": model,
+            "ok": True,
+            "detail": "Répond correctement.",
+        }
+    except ProviderError as exc:
+        return {
+            "provider": provider.name,
+            "configured": True,
+            "model": model,
+            "ok": False,
+            "detail": str(exc),
+        }
+
+
+async def check_all_providers() -> list[dict[str, object]]:
+    """Vérifie tous les fournisseurs enregistrés (configurés ou non), dans l'ordre du registre."""
+    return [await check_provider(p.name) for p in _PROVIDERS.values()]

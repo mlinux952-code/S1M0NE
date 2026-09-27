@@ -55,6 +55,11 @@ default_provider = "groq"
 # [ai.ollama]
 # model = "qwen2.5:0.5b"
 
+[backup]
+# Sauvegardes SQLite (NEXT_STEPS.md §A.2) : "s1mone backup create".
+dir = "data/backups"
+keep = 10
+
 [plugins]
 # Dossier surveillé pour les plugins locaux (Phase 8) : tout fichier .py posé ici est chargé au
 # démarrage (préfixer par '_' pour désactiver sans supprimer). Voir plugins_local/README.md.

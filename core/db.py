@@ -221,3 +221,74 @@ def mark_task_cancelled(task_id: str) -> None:
             (time.time(), task_id),
         )
 
+
+# --- Sauvegarde (NEXT_STEPS.md §A.2) ---
+#
+# Toute la mémoire de S1M0NE (conversations IA, tâches, cache) vit dans un seul fichier SQLite.
+# `backup_db` en fait une copie datée via l'API de sauvegarde native de sqlite3
+# (`sqlite3.Connection.backup`) plutôt qu'une simple copie de fichier : elle reste cohérente même
+# si une autre connexion écrit pendant la sauvegarde (mode WAL), contrairement à un `cp` brut qui
+# pourrait copier un fichier à moitié écrit.
+
+
+def backup_db(destination_dir: Path | None = None, keep: int | None = None) -> Path:
+    """Crée une sauvegarde horodatée de la base SQLite, puis purge les plus anciennes au-delà de
+    `keep` (par défaut `Settings.backups_keep`). Lève FileNotFoundError si la base n'existe pas
+    encore (jamais de sauvegarde fantôme d'un fichier inexistant)."""
+    source_path = settings.db_path
+    if not source_path.exists():
+        raise FileNotFoundError(
+            f"Base introuvable : {source_path}. Lance 's1mone status' pour l'initialiser d'abord."
+        )
+    dest_dir = destination_dir or settings.backups_dir
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = time.strftime("%Y%m%d-%H%M%S")
+    dest_path = dest_dir / f"s1mone-{timestamp}.db"
+    # Deux sauvegardes dans la même seconde ne doivent jamais s'écraser silencieusement (bug
+    # constaté en test manuel : la résolution de strftime est la seconde).
+    suffix = 2
+    while dest_path.exists():
+        dest_path = dest_dir / f"s1mone-{timestamp}-{suffix}.db"
+        suffix += 1
+
+    src_conn = sqlite3.connect(source_path)
+    try:
+        dest_conn = sqlite3.connect(dest_path)
+        try:
+            src_conn.backup(dest_conn)
+        finally:
+            dest_conn.close()
+    finally:
+        src_conn.close()
+
+    logger.info(f"Sauvegarde SQLite créée : {dest_path}")
+    _prune_old_backups(dest_dir, settings.backups_keep if keep is None else keep)
+    return dest_path
+
+
+def _prune_old_backups(dest_dir: Path, keep: int) -> list[Path]:
+    if keep <= 0:
+        return []
+    backups = sorted(dest_dir.glob("s1mone-*.db"), key=lambda p: p.stat().st_mtime, reverse=True)
+    to_delete = backups[keep:]
+    for path in to_delete:
+        path.unlink(missing_ok=True)
+        logger.info(f"Ancienne sauvegarde supprimée (rétention {keep}) : {path}")
+    return to_delete
+
+
+def list_backups(destination_dir: Path | None = None) -> list[dict[str, Any]]:
+    """Liste les sauvegardes existantes, les plus récentes d'abord."""
+    dest_dir = destination_dir or settings.backups_dir
+    if not dest_dir.is_dir():
+        return []
+    backups = sorted(dest_dir.glob("s1mone-*.db"), key=lambda p: p.stat().st_mtime, reverse=True)
+    return [
+        {
+            "path": str(p),
+            "size_bytes": p.stat().st_size,
+            "created_at": p.stat().st_mtime,
+        }
+        for p in backups
+    ]
+

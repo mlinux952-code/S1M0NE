@@ -194,9 +194,15 @@ class _FakeProvider(AIProvider):
     description = "Fournisseur factice pour les tests."
     default_model = "fake-model"
 
-    def __init__(self, configured: bool = True, reply: str = "réponse factice") -> None:
+    def __init__(
+        self,
+        configured: bool = True,
+        reply: str = "réponse factice",
+        raise_error: str | None = None,
+    ) -> None:
         self._configured = configured
         self._reply = reply
+        self._raise_error = raise_error
         self.received_messages: list[ChatMessage] = []
 
     def is_configured(self) -> bool:
@@ -207,6 +213,8 @@ class _FakeProvider(AIProvider):
 
     async def chat(self, messages: list[ChatMessage], model: str | None = None) -> str:
         self.received_messages = messages
+        if self._raise_error:
+            raise ProviderError(self._raise_error)
         return self._reply
 
 
@@ -326,3 +334,76 @@ def test_converse_trims_history_beyond_max_length(monkeypatch):
     history = gateway_module.get_conversation_history()
     assert len(history) == 4  # borné, pas 10 (5 tours x 2 messages)
     assert history[-1].content == "ok"
+
+
+# --- check_provider / check_all_providers (NEXT_STEPS.md §A.4) ---------------------------------
+
+
+def test_check_provider_not_configured_does_not_call_api(monkeypatch):
+    fake = _FakeProvider(configured=False)
+    monkeypatch.setattr(gateway_module, "_PROVIDERS", {"fake": fake})
+
+    result = asyncio.run(gateway_module.check_provider("fake"))
+    assert result == {
+        "provider": "fake",
+        "configured": False,
+        "model": None,
+        "ok": False,
+        "detail": "Configure le fournisseur factice (test uniquement).",
+    }
+    assert fake.received_messages == []  # aucun appel réseau tenté
+
+
+def test_check_provider_success(monkeypatch):
+    fake = _FakeProvider(reply="ok")
+    monkeypatch.setattr(gateway_module, "_PROVIDERS", {"fake": fake})
+
+    result = asyncio.run(gateway_module.check_provider("fake"))
+
+    assert result["provider"] == "fake"
+    assert result["configured"] is True
+    assert result["model"] == "fake-model"
+    assert result["ok"] is True
+    assert "correctement" in result["detail"]
+    # Vérifie qu'un vrai message minimal a été envoyé (pas juste un ping local).
+    assert len(fake.received_messages) == 1
+    assert fake.received_messages[0].role == "user"
+
+
+def test_check_provider_reports_provider_error_without_raising(monkeypatch):
+    fake = _FakeProvider(raise_error="Modèle introuvable (404) : retiré du catalogue gratuit.")
+    monkeypatch.setattr(gateway_module, "_PROVIDERS", {"fake": fake})
+
+    result = asyncio.run(gateway_module.check_provider("fake"))
+    assert result["ok"] is False
+    assert result["configured"] is True
+    assert "retiré du catalogue" in result["detail"]
+
+
+def test_check_provider_uses_configured_model_override(monkeypatch):
+    fake = _FakeProvider(reply="ok")
+    monkeypatch.setattr(gateway_module, "_PROVIDERS", {"fake": fake})
+    monkeypatch.setattr(gateway_module.settings, "ai_provider_model", lambda name: "custom-model")
+
+    result = asyncio.run(gateway_module.check_provider("fake"))
+    assert result["model"] == "custom-model"
+
+
+def test_check_all_providers_checks_every_registered_provider(monkeypatch):
+    ok_provider = _FakeProvider(reply="ok")
+    ok_provider.name = "ok-one"
+    broken_provider = _FakeProvider(raise_error="cassé")
+    broken_provider.name = "broken-one"
+    unconfigured = _FakeProvider(configured=False)
+    unconfigured.name = "unconfigured-one"
+    monkeypatch.setattr(
+        gateway_module,
+        "_PROVIDERS",
+        {"ok-one": ok_provider, "broken-one": broken_provider, "unconfigured-one": unconfigured},
+    )
+
+    results = asyncio.run(gateway_module.check_all_providers())
+    by_name = {r["provider"]: r for r in results}
+    assert by_name["ok-one"]["ok"] is True
+    assert by_name["broken-one"]["ok"] is False
+    assert by_name["unconfigured-one"]["configured"] is False

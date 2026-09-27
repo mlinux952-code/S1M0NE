@@ -17,8 +17,8 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, Form, HTTPException, Request
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
@@ -28,7 +28,7 @@ from ai.gateway import available_providers
 from ai.gateway import converse as ai_converse
 from ai.gateway import get_conversation_history, reset_conversation
 from connectors.engine import available_connectors, search_all
-from core import permissions
+from core import auth, permissions
 from core.config import settings
 from core.db import init_db
 from core.logging_setup import get_logger
@@ -47,6 +47,7 @@ TEMPLATES_DIR = WEB_DIR / "templates"
 STATIC_DIR = WEB_DIR / "static"
 
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+templates.env.globals["auth_enabled"] = lambda: settings.web_auth_enabled
 
 # Liste blanche stricte : seules ces commandes en LECTURE SEULE sont exposées via le web.
 # Aucune commande système, aucune écriture, aucune exécution arbitraire (§15/§31 du mega-prompt).
@@ -113,6 +114,14 @@ async def lifespan(app: FastAPI):
     fois le serveur HTTP ET le worker de tâches en tâche de fond (mega-prompt : pas de service
     supplémentaire, low-resource first). Le worker s'arrête proprement à l'extinction."""
     init_db()
+    if settings.web_auth_enabled:
+        logger.info("Authentification web activée (S1MONE_WEB_PASSWORD défini dans .env).")
+    else:
+        logger.warning(
+            "Authentification web DÉSACTIVÉE : l'interface est accessible sans mot de passe à "
+            "quiconque atteint ce serveur (0.0.0.0). Définis S1MONE_WEB_PASSWORD dans .env pour "
+            "l'activer — voir NEXT_STEPS.md §A.1."
+        )
     stop_event = asyncio.Event()
     worker_task = asyncio.create_task(task_manager.worker_loop(interval_seconds=2.0, stop_event=stop_event))
     logger.info("Worker de tâches démarré en arrière-plan dans le processus web.")
@@ -131,6 +140,46 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     app = FastAPI(title="S1M0NE", version="0.3.0", lifespan=lifespan)
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+    @app.middleware("http")
+    async def _require_auth(request: Request, call_next):
+        """Authentification web optionnelle (NEXT_STEPS.md §A.1). Désactivée par défaut (aucun
+        S1MONE_WEB_PASSWORD dans .env) : comportement historique, zéro régression. Activée : une
+        requête HTML sans cookie valide est redirigée vers /login, une requête API reçoit un 401
+        JSON plutôt qu'une redirection (inutile pour un client programmatique)."""
+        if not settings.web_auth_enabled or auth.is_path_exempt(request.url.path):
+            return await call_next(request)
+        cookie = request.cookies.get(auth.COOKIE_NAME)
+        if auth.verify_session_cookie(cookie, settings.web_password):
+            return await call_next(request)
+        if request.url.path.startswith("/api/"):
+            return JSONResponse({"detail": "Authentification requise."}, status_code=401)
+        return RedirectResponse(url="/login", status_code=303)
+
+    @app.get("/login", response_class=HTMLResponse)
+    def login_page(request: Request, error: str | None = None) -> HTMLResponse:
+        return templates.TemplateResponse(request, "login.html", {"error": error})
+
+    @app.post("/login")
+    def login_submit(password: str = Form(...)) -> Any:
+        if not settings.web_auth_enabled or auth.check_password(password):
+            response = RedirectResponse(url="/", status_code=303)
+            if settings.web_auth_enabled:
+                response.set_cookie(
+                    auth.COOKIE_NAME,
+                    auth.create_session_cookie(settings.web_password),
+                    httponly=True,
+                    samesite="lax",
+                    max_age=auth.SESSION_LIFETIME_SECONDS,
+                )
+            return response
+        return RedirectResponse(url="/login?error=1", status_code=303)
+
+    @app.get("/logout")
+    def logout() -> Any:
+        response = RedirectResponse(url="/login", status_code=303)
+        response.delete_cookie(auth.COOKIE_NAME)
+        return response
 
     @app.get("/api/health")
     def api_health() -> dict[str, Any]:

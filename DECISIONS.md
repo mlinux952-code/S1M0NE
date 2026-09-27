@@ -215,6 +215,70 @@ Phase 1+).
 
 ---
 
+## D14 — Authentification de l'interface web (post-plan-initial, NEXT_STEPS.md §A.1)
+
+- **Constat de sécurité** : jusqu'ici, l'interface web (Phase 2) ne demandait aucun mot de passe.
+  Acceptable tant qu'elle n'écoutait que sur `localhost`, mais devient un vrai risque dès que la
+  machine est accessible depuis le réseau local (ou au-delà) — n'importe qui pourrait consulter
+  les tâches, la mémoire/conversation IA, lancer des recherches ou déclencher des commandes
+  autorisées.
+- **Décision : cookie de session signé HMAC-SHA256, sans dépendance externe (`core/auth.py`),
+  opt-in via `S1MONE_WEB_PASSWORD` dans `.env`.** `[DECIDED]` Alternatives écartées :
+  - *Bibliothèque de sessions dédiée (`itsdangerous`, `starlette-login`, etc.)* — écartée : le
+    besoin (un seul mot de passe partagé, un seul "utilisateur", pas de rôles) est trivial à
+    coder en ~40 lignes avec `hmac`/`hashlib` de la stdlib ; ajouter une dépendance pour ça irait
+    contre LOW RESOURCE FIRST et la philosophie déjà actée en D9/D10 (préférer un adaptateur
+    maison à une bibliothèque lourde quand le besoin est simple et stable).
+  - *Stockage de session côté serveur (fichier, table SQLite)* — écarté : un cookie signé est
+    stateless (rien à nettoyer, rien qui grossisse avec le temps), suffisant pour un utilisateur
+    unique, et évite d'ajouter une table `sessions` à surveiller/purger.
+  - *Authentification HTTP Basic* — écartée : moins ergonomique (pas de vraie page de
+    déconnexion propre, alerte navigateur disgracieuse), alors qu'une page `/login` Jinja2 coûte
+    la même chose à écrire vu que le reste de l'interface l'est déjà (Phase 2).
+- **Opt-in, jamais un mur bloquant par défaut** : si `S1MONE_WEB_PASSWORD` est absent, le
+  comportement historique (aucune authentification) est conservé à l'identique — seul un
+  avertissement est loggué au démarrage. Cohérent avec le principe déjà appliqué à Ollama/D10 :
+  ne jamais casser un usage local existant pour une fonctionnalité de sécurité que tout le monde
+  n'a pas besoin d'activer (ex. usage strictement local sur une machine déjà physiquement
+  protégée).
+- **Exemptions explicites** : `/login` (sinon impossible de se connecter) et `/static/` (feuilles
+  de style, pas d'information sensible). Tout le reste — y compris `/api/*` — est protégé, avec
+  une réponse adaptée au type de requête (redirection 303 vers `/login` pour du HTML, 401 JSON
+  pour les appels `/api/*`, pour ne pas casser silencieusement d'éventuels clients API).
+- **Dépendance ajoutée : `python-multipart`.** Nécessaire pour que FastAPI/Starlette parsent le
+  formulaire HTML de `/login` (`Form(...)` / `request.form()` l'exigent inconditionnellement dans
+  la version installée, même sans upload de fichier). Petite bibliothèque pure Python, gratuite,
+  jugée conforme à LOW RESOURCE FIRST (même logique que les dépendances déjà acceptées : FastAPI,
+  httpx, Typer...).
+- Limite connue acceptée : un seul mot de passe partagé (pas de comptes multiples, pas de rôles)
+  — cohérent avec l'hypothèse mono-utilisateur du méga-prompt ; à revoir seulement si S1M0NE doit
+  un jour servir plusieurs personnes distinctes.
+
+---
+
+## D15 — Démarrage automatique (post-plan-initial, NEXT_STEPS.md §A.3)
+
+- **Décision : `systemd --user`, jamais un service système root.** `[DECIDED]` Cohérent avec
+  l'hypothèse "machine personnelle, utilisateur unique" du méga-prompt : pas besoin de droits
+  administrateur, le service tourne avec exactement les mêmes droits que l'utilisateur qui lance
+  `s1mone` à la main — pas de surface d'attaque supplémentaire liée à un service root.
+- **Alternative écartée : cron `@reboot`.** Fonctionne, mais ne redémarre pas le processus s'il
+  plante en cours de route (`systemd` le fait nativement avec `Restart=on-failure`), et ne
+  fournit pas de commandes d'état/logs pratiques (`systemctl status`, `journalctl`). Gardée
+  uniquement comme repli documenté si `systemctl` est absent (ex. certaines distributions
+  minimalistes, conteneurs).
+- **`loginctl enable-linger` jamais automatisé par le script d'installation** : c'est un réglage
+  qui change un comportement global du compte utilisateur (processus qui continuent de tourner
+  même sans session ouverte) — décision jugée trop invasive pour être prise silencieusement par
+  un script, donc seulement documentée/affichée en fin d'installation, à l'utilisateur de
+  l'activer s'il le souhaite.
+- **Pas de test automatisé (`pytest`) pour cette fonctionnalité** : un vrai test nécessiterait un
+  bus de session `systemd --user` actif, absent par construction d'un environnement d'exécution
+  sandboxé/CI classique. Vérifié manuellement à la place (génération correcte du fichier
+  d'unité, détection propre et message actionnable quand le bus de session est indisponible).
+
+---
+
 ## Récapitulatif de la stack retenue pour la Phase 1 (fondation)
 
 ```text
