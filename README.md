@@ -33,12 +33,14 @@ extensible vers l'IA — conçue en priorité pour tourner confortablement sur u
   de vraies commandes système, mais uniquement une liste blanche stricte, classée par niveau de
   permission (READ/WRITE/EXECUTE/ADMIN), bornée au dossier de données de S1M0NE, avec
   confirmation explicite obligatoire pour toute commande destructrice (rm, rmdir).
-- **Phase 8 — Plugins (Pluggy) : terminée et testée en sandbox, en attente de validation sur la
-  machine réelle.** Dépose un fichier `.py` dans `plugins_local/` pour ajouter un connecteur de
-  recherche ou un type de tâche à S1M0NE, sans toucher au code central. Deux exemples fournis et
-  fonctionnels dans `plugins_local/examples/`.
+- **Phase 8 — Plugins (Pluggy) : terminée, testée et validée sur la machine réelle.** Dépose un
+  fichier `.py` dans `plugins_local/` pour ajouter un connecteur de recherche ou un type de tâche
+  à S1M0NE, sans toucher au code central. Deux exemples fournis et fonctionnels dans
+  `plugins_local/examples/`.
 
-Le détail complet, phase par phase, est dans [`PROJECT_STATE.md`](./PROJECT_STATE.md).
+**Les 9 phases du plan initial sont maintenant terminées, testées et validées sur la machine
+réelle.** Le détail complet, phase par phase, est dans [`PROJECT_STATE.md`](./PROJECT_STATE.md) ;
+les pistes envisagées pour la suite sont dans [`NEXT_STEPS.md`](./NEXT_STEPS.md).
 
 ## Installation (première fois)
 

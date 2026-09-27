@@ -55,11 +55,14 @@
   machine réelle : `s1mone exec list`/`run` fonctionnent, `rm` sur un dossier a été correctement
   refusé par le vrai binaire système (`est un dossier` — comportement Unix standard, `rmdir`
   existe pour ce cas).
-- **PHASE 8 — PLUGINS (Pluggy) : terminée et testée en sandbox, en attente de validation sur la
-  machine réelle.** Voir la section dédiée plus bas. En résumé : `plugins/hookspecs.py` +
-  `plugins/manager.py` (Pluggy, dépendance directe désormais) permettent d'ajouter des
-  connecteurs de recherche et des types de tâches sans toucher au code central, via un fichier
-  `.py` déposé dans `plugins_local/` ou un paquet pip avec entry point `s1mone`.
+- **PHASE 8 — PLUGINS (Pluggy) : terminée, testée et validée sur la machine réelle.** Voir la
+  section dédiée plus bas. En résumé : `plugins/hookspecs.py` + `plugins/manager.py` (Pluggy,
+  dépendance directe désormais) permettent d'ajouter des connecteurs de recherche et des types
+  de tâches sans toucher au code central, via un fichier `.py` déposé dans `plugins_local/` ou
+  un paquet pip avec entry point `s1mone`. Validé sur la machine réelle : `s1mone plugin list`
+  détecte bien l'exemple activé, `s1mone search test --sources hello` renvoie le résultat de
+  démonstration, et `s1mone task submit echo` s'exécute avec succès (SUCCESS dans
+  `s1mone task list`).
 - **199/199 tests automatisés passent** dans le sandbox (152 avant Phase 9 + 34 Phase 9 + 13
   Phase 8).
 
@@ -204,13 +207,12 @@ fait :
 
 ## Prochaine étape
 
-Validation des Phases 8 et 9 sur la machine réelle de l'utilisateur (`git pull && ./install.sh`,
-puis pour la Phase 8 : `cp plugins_local/examples/hello_connector.py plugins_local/`,
-`s1mone plugin list`, `s1mone search test --sources hello`).
+**Les 9 phases du plan initial (méga-prompt) sont maintenant toutes terminées, testées ET
+validées sur la machine réelle** (Phase 8 confirmée : `s1mone plugin list` détecte l'exemple
+activé, `s1mone search test --sources hello` renvoie son résultat, `s1mone task submit echo`
+s'exécute avec succès — transcript complet reçu et vérifié).
 
-C'était la dernière grande phase du plan initial (méga-prompt). Candidats restants, tous de
-second ordre (polish / nice-to-have, pas de nouvelle capacité structurante) :
-- Page web dédiée à la mémoire (actuellement CLI uniquement, `s1mone memory ...`).
-- Pagination/tri des résultats de recherche (par pertinence, étoiles GitHub, etc.).
-- Vrai paquet pip d'exemple pour un plugin distribué (entry point `s1mone`), au-delà des fichiers
-  locaux déjà démontrés.
+L'utilisateur a marqué une pause. Les pistes réfléchies pour la suite (au-delà du plan initial)
+sont détaillées dans [`NEXT_STEPS.md`](./NEXT_STEPS.md) — à proposer/discuter à la reprise,
+sans grande implémentation supplémentaire tant qu'il n'a pas donné le feu vert sur une direction
+(contrairement aux Phases 7/8/9 où le mandat "tout, vas-y" était déjà acquis).
