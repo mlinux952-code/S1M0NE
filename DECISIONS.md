@@ -421,3 +421,30 @@ IA (Phase 6)       : abstraction interne `AIProvider` + adaptateurs httpx (Groq,
 
 Aucune dépendance ne nécessite Docker, Kubernetes, Redis, PostgreSQL, Elasticsearch ou Node.js
 pour que S1M0NE fonctionne. Conforme à la règle LOW RESOURCE FIRST (§3 du méga-prompt).
+
+## D19 — Isolation des plugins dans la suite de tests (bug réel, machine utilisateur)
+
+- **Constat** : `git pull` + `./install.sh` sur la machine réelle de l'utilisateur a fait
+  apparaître 3 échecs de tests (`test_search_all_isolates_a_failing_connector`,
+  `test_search_all_second_identical_call_hits_cache`,
+  `test_api_search_sources_lists_seven_connectors`) alors que la suite passe 441/441 dans
+  l'environnement de développement. Diagnostic confirmé par reproduction exacte : l'utilisateur
+  avait copié `plugins_local/examples/hello_connector.py` dans `plugins_local/` lors d'un essai
+  manuel antérieur (Phase 8, en suivant exactement les instructions du README) et ne l'avait
+  jamais retiré. `connectors.engine._effective_connectors()` fusionne toujours les connecteurs
+  des plugins tiers (`plugins.manager.plugin_connectors()`), qui lit le VRAI `Settings.plugins_dir`
+  — comportement 100% correct en production (c'est le but même des plugins), mais qui rend
+  n'importe quel test supposant un ensemble fermé de connecteurs dépendant de l'état réel du
+  disque de la machine qui exécute `pytest`. Aucun rapport avec les changements de la Catégorie D
+  ni avec la mise à jour elle-même — un bug de test latent depuis la Phase 8, jamais détecté car
+  le sandbox de développement n'a jamais eu de plugin local actif.
+- **Décision : `tests/conftest.py` (nouveau), fixture autouse globale.** Isole
+  `S1MONE_PLUGINS_DIR` vers un dossier vide par test + `reset_plugin_manager()` avant/après —
+  s'applique à TOUTE la suite sans toucher un seul test existant. Un test qui veut explicitement
+  exercer le vrai mécanisme de plugins (`test_plugins.py`, `test_plugin_example_package.py`)
+  redéfinit sa propre valeur par-dessus (dernier `monkeypatch.setenv` gagne), donc aucune
+  régression sur ces tests. `[DECIDED]`
+- Reproduit et vérifié manuellement : en copiant `hello_connector.py` dans `plugins_local/` puis
+  en exécutant la suite, les 3 tests échouent exactement comme sur la machine de l'utilisateur
+  sans `conftest.py`, et passent avec. Suite complète (avec le plugin actif ET avec
+  `conftest.py`) : 441/441 passed.

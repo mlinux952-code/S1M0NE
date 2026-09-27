@@ -347,6 +347,20 @@ attendre de sélection précise à chaque étape (même mandat que pour les Phas
     Plus aucune tâche connue dans NEXT_STEPS.md ni dans les idées post-C.3 — mandat "tous et plus
     encore" rempli une nouvelle fois ; à rediscuter avec l'utilisateur pour une éventuelle
     catégorie E, ou considérer S1M0NE comme fonctionnellement complet pour l'instant.
+  - **Post-catégorie D, deux correctifs suite à la mise à jour réelle chez l'utilisateur** :
+    1. `install.sh` et `scripts/*.sh` avaient perdu leur bit exécutable dans un commit précédent
+       (bug de l'environnement de travail de l'agent) → `./install.sh` échouait avec "Permission
+       non accordée" chez l'utilisateur. Corrigé (commit `b2bbcff`), vérifié par clone GitHub
+       frais.
+    2. **Bug réel découvert via les logs de test envoyés par l'utilisateur** (voir DECISIONS.md
+       D19) : 3 tests en échec sur sa machine (`test_search_all_isolates_a_failing_connector`,
+       `test_search_all_second_identical_call_hits_cache`,
+       `test_api_search_sources_lists_seven_connectors`), dus à un connecteur "hello" actif
+       (exemple de plugin copié dans `plugins_local/` lors d'un essai manuel antérieur, Phase 8)
+       qui s'ajoutait silencieusement aux résultats dans les tests, faute d'isolation. Diagnostic
+       reproduit et confirmé dans le sandbox (copie du même plugin → mêmes 3 échecs exacts).
+       Correctif : `tests/conftest.py` (nouveau), fixture autouse isolant `S1MONE_PLUGINS_DIR`
+       pour toute la suite. Suite complète (plugin actif ET conftest en place) : 441/441 passed.
 
 **Important pour l'utilisateur** : `S1MONE_WEB_PASSWORD` doit être choisi et défini par
 l'utilisateur lui-même dans son `.env` sur sa machine réelle (secret que l'agent ne peut pas
