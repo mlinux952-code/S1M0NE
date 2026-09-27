@@ -1,0 +1,17 @@
+{% if error %}
+<p class="muted" style="color:#e05a5a;">{{ error }}</p>
+{% elif result %}
+<div class="card">
+    <p>Commande exécutée (sandboxée) : <code>{{ result.command_display }}</code></p>
+    {% if result.ok %}
+    <p><span class="badge badge-ok">réussie</span> en {{ result.duration_seconds }}s</p>
+    {% elif result.timed_out %}
+    <p style="color:#e05a5a;">interrompue (délai dépassé)</p>
+    {% else %}
+    <p style="color:#e05a5a;">échouée (code retour : {{ result.exit_code }})</p>
+    {% endif %}
+    <pre class="terminal-output">{{ result.output }}</pre>
+    <p class="hint">Exécution confinée par Firejail (dossier de l'app uniquement, réseau coupé
+        sauf case cochée, mémoire/CPU plafonnés) — voir DECISIONS.md §D24.</p>
+</div>
+{% endif %}

@@ -650,3 +650,55 @@ pour que S1M0NE fonctionne. Conforme à la règle LOW RESOURCE FIRST (§3 du mé
   (clone Hugging Face Kokoro-82M : 4.3 Mo au lieu du poids réel du modèle). L'utilisateur qui
   veut vraiment les poids complets doit lancer `git lfs pull` lui-même, en connaissance de cause.
   2 nouveaux tests de régression. Suite complète : **567/567 passed**.
+
+## D24 — Catégorie G++ : exécution réelle d'une app installée, sandboxée par Firejail
+
+- **Contexte** : suite à un signalement utilisateur ("Installer mais rien ne se passe" sur
+  `TheAlgorithms/algorithms-keeper`), investigation menée — le backend fonctionnait en réalité
+  parfaitement (juste aucun indicateur visuel pendant l'attente du clone git, corrigé
+  séparément). Mais la question de fond restait : une fois une app installée (G+), S1M0NE ne
+  pouvait que l'INSPECTER (`ls`/`cat` via le terminal Phase 9), jamais l'EXÉCUTER. L'utilisateur
+  a proposé une "machine virtuelle" pour résoudre ça.
+- **Recherche concrète avant de proposer quoi que ce soit** (jamais supposer qu'une approche est
+  "légère" sans vérifier) : une vraie VM (VirtualBox/QEMU) est bien trop lourde pour une machine
+  à 4 Go de RAM (contrainte permanente de l'utilisateur). Docker/Podman impliquent un daemon et
+  des images, overhead significatif. **Décision : Firejail** — sandbox Linux basé sur les
+  namespaces + seccomp-bpf, aucun daemon, quelques Mo, overhead mémoire quasi nul, déjà présent
+  dans les dépôts standards (`apt`/`dnf`/`pacman`). `[DECIDED]`
+- **Vérifications manuelles réelles avant d'écrire le code** (Firejail installé dans le sandbox
+  pour tester, jamais supposé) :
+  - `--private=<dossier>` : confirmé qu'un script sandboxé ne peut PAS lire `S1M0NE/.env` ni
+    lister le vrai `/home/<user>` — seul le contenu du dossier de l'app installée est visible
+    (mappé comme "home" du sandbox).
+  - `--net=none` : confirmé qu'un `urlopen()` échoue avec une erreur DNS/connexion dans le
+    sandbox.
+  - `--rlimit-as=512M` : confirmé qu'une tentative d'allocation de 2 Go lève `MemoryError`.
+  - `--rlimit-cpu=3` : confirmé qu'une boucle infinie est tuée après ~3s de temps CPU (SIGKILL).
+  - Effet de bord identifié et documenté (sans risque) : `--private=<dossier>` peut copier des
+    fichiers `.bashrc`/`.inputrc` génériques dans ce dossier au premier lancement (modèles
+    standards, pas les vrais fichiers de l'utilisateur).
+- **Nouveau module dédié `core/app_run.py`**, séparé d'`app_install.py` et de `shell_runner.py`,
+  avec ses propres garanties :
+  1. **Sandbox obligatoire, jamais de repli non confiné** : si `firejail` est absent de la
+     machine (`shutil.which`), on refuse d'exécuter et on l'affiche clairement (avec la commande
+     d'installation), plutôt que de lancer le code en clair "pour que ça marche quand même".
+  2. **Interpréteur en liste blanche** (`RUNNERS` : python3, python, node, npm, java, ruby, php,
+     perl) — volontairement sans shell générique (bash/sh) pour l'instant, extensible sur
+     demande explicite (même philosophie que `core/permissions.py`).
+  3. **Fichier d'entrée borné au dossier installé** (même logique de résolution de chemin que
+     `core/shell_runner.py` — impossible d'échapper via `../..` ou un chemin absolu).
+  4. **Réseau coupé par défaut**, case à cocher explicite pour l'activer (jamais cochée par
+     défaut) — cohérent avec "jamais de confiance aveugle".
+  5. **Confirmation explicite obligatoire** (`RunConfirmationRequiredError`), même logique que
+     D23.
+- **Historique des exécutions** : réutilise `core.memory` (niveau `persistent`, clé
+  `run_apps_log`, bornée à 200 entrées) — même pattern que D21/D23.
+- **Intégration** : `s1mone discover run/runs` en CLI, bouton "Lancer…" (repliable, `<details>`)
+  sur chaque app installée avec statut "ok" dans `/discover`, réutilisant les mêmes conventions
+  htmx que G+ (`hx-confirm`, `hx-indicator`, sortie jamais masquée).
+- **Tests** : `subprocess.run` et `shutil.which` simulés (monkeypatch) dans la suite automatisée
+  — une vérification manuelle bout-en-bout avec Firejail réellement installé et une vraie app
+  installée (`TheAlgorithms/algorithms-keeper`) a été faite une fois en dehors de pytest,
+  confirmant l'exécution réelle, le blocage réseau et le confinement disque.
+- Suite complète après Catégorie G++ : **599/599 passed** (32 nouveaux tests : `test_app_run.py`,
+  `test_cli_app_run.py`, `test_web_app_run.py`).

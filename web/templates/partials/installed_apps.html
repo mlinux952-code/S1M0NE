@@ -2,14 +2,47 @@
 <p class="muted">Aucune installation effectuée pour l'instant.</p>
 {% else %}
 <table>
-    <tr><th>Site</th><th>Nom</th><th>Statut</th><th>Dossier</th></tr>
+    <tr><th>Site</th><th>Nom</th><th>Statut</th><th>Dossier</th><th>Exécuter</th></tr>
     {% for e in entries %}
     <tr>
         <td><span class="badge">{{ e.site }}</span></td>
         <td>{{ e.name }}</td>
         <td>{% if e.ok %}<span class="badge badge-ok">ok</span>{% else %}<span class="badge" style="color:#e05a5a;">échec</span>{% endif %}</td>
         <td><code>{{ e.install_dir }}</code></td>
+        <td>
+            {% if e.ok %}
+            <details>
+                <summary>Lancer…</summary>
+                <form hx-post="/api/discover/run" hx-target="#run-output" hx-swap="innerHTML"
+                      hx-indicator="#run-spinner"
+                      hx-on::after-swap="document.getElementById('run-output').scrollIntoView({behavior:'smooth', block:'nearest'})"
+                      hx-confirm="Exécuter réellement du code de '{{ e.name }}' ? Ce code tournera dans un sandbox Firejail (réseau coupé par défaut, mémoire/CPU limités, vue disque restreinte à ce dossier) mais reste une exécution réelle."
+                      style="margin-top:0.5rem; display:flex; flex-direction:column; gap:0.3rem; max-width:22rem;">
+                    <input type="hidden" name="site" value="{{ e.site }}">
+                    <input type="hidden" name="name" value="{{ e.name }}">
+                    <label>Interpréteur
+                        <select name="runner">
+                            {% for r in runners %}<option value="{{ r }}">{{ r }}</option>{% endfor %}
+                        </select>
+                    </label>
+                    <label>Fichier à exécuter (relatif au dossier ci-dessus)
+                        <input type="text" name="entry" placeholder="ex: main.py" required>
+                    </label>
+                    <label>Arguments (optionnel)
+                        <input type="text" name="args" placeholder="ex: --help">
+                    </label>
+                    <label><input type="checkbox" name="network" value="true"> autoriser le réseau (déconseillé)</label>
+                    <input type="hidden" name="confirmed" value="true">
+                    <button type="submit">Exécuter (sandboxé)</button>
+                </form>
+            </details>
+            {% else %}
+            <span class="muted">non disponible (installation échouée)</span>
+            {% endif %}
+        </td>
     </tr>
     {% endfor %}
 </table>
+<p id="run-spinner" class="htmx-indicator muted">⏳ Exécution en cours dans le sandbox…</p>
+<div id="run-output" style="margin-top:1rem;"></div>
 {% endif %}

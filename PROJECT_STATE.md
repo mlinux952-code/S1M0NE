@@ -412,6 +412,24 @@ attendre de sélection précise à chaque étape (même mandat que pour les Phas
       le contenu installé — aucune nouvelle surface d'exécution pour cette partie.
     - Suite complète : **565/565 passed** (28 nouveaux tests : `test_app_install.py`,
       `test_cli_app_install.py`, `test_web_app_install.py`).
+    - **Correctif immédiat "machine faible"** : clone git forcé en `GIT_LFS_SKIP_SMUDGE=1` pour
+      éviter qu'un dépôt Hugging Face avec Git LFS ne télécharge automatiquement des poids de
+      modèle de plusieurs Go (voir DECISIONS.md D23). Suite complète : **567/567 passed**.
+    - **Correctif UI** suite à un signalement ("Installer mais rien ne se passe") : ajout d'un
+      indicateur de chargement (`hx-indicator`) sur `/discover` et `/search` — le backend
+      fonctionnait déjà correctement, il manquait juste un retour visuel pendant le clonage git
+      (jusqu'à ~1 minute selon le réseau).
+  - **Catégorie G++ — exécution réelle d'une app déjà installée, sandboxée par Firejail :
+    terminée.** Suite logique de G+ (l'utilisateur pouvait installer mais pas exécuter) — voir
+    DECISIONS.md D24 pour la recherche concrète (VM écartée, trop lourde pour 4 Go de RAM) et les
+    vérifications manuelles de sandboxing (vue disque restreinte, réseau coupé, RAM/CPU
+    plafonnés). Nouveau module `core/app_run.py`.
+    - CLI : `s1mone discover run <site> <nom> <interpréteur> <fichier> [args...] [--network]
+      [--yes]`, `s1mone discover runs`.
+    - Web : bouton "Lancer…" repliable sur chaque app installée avec succès (`/discover`),
+      formulaire (interpréteur, fichier, arguments, case réseau), sortie affichée intégralement.
+    - Suite complète : **599/599 passed** (32 nouveaux tests : `test_app_run.py`,
+      `test_cli_app_run.py`, `test_web_app_run.py`).
   - **Post-catégorie D, deux correctifs suite à la mise à jour réelle chez l'utilisateur** :
     1. `install.sh` et `scripts/*.sh` avaient perdu leur bit exécutable dans un commit précédent
        (bug de l'environnement de travail de l'agent) → `./install.sh` échouait avec "Permission

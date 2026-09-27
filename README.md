@@ -437,6 +437,29 @@ Garanties de sécurité (même esprit que Phase 9/D10) :
   est toujours affichée, jamais masquée. Une fois installée, une app se parcourt avec le terminal
   déjà existant : `s1mone exec run "ls installed_apps"`.
 
+**Exécuter réellement une app déjà installée**, sandboxée par [Firejail](https://firejail.wordpress.com/)
+(namespaces Linux + seccomp — pas de VM, pas de daemon, overhead quasi nul, adapté à une machine
+avec peu de RAM) :
+
+```bash
+sudo apt install firejail   # Debian/Ubuntu (dnf sur Fedora, pacman -S sur Arch)
+
+s1mone discover run github TheAlgorithms__Python python3 sorts/merge_sort.py
+s1mone discover run npm is-odd node index.js --network   # réseau autorisé (déconseillé, opt-in)
+s1mone discover runs                                      # historique des exécutions
+```
+
+Garanties de sécurité (voir `DECISIONS.md` §D24) :
+- **Sandbox obligatoire** : si Firejail n'est pas installé, S1M0NE refuse d'exécuter plutôt que
+  de lancer le code en clair.
+- **Vue disque restreinte** au dossier de l'app installée (`--private=`) — ni le reste de tes
+  fichiers, ni le code de S1M0NE lui-même ne sont visibles depuis le sandbox.
+- **Réseau coupé par défaut** (`--net=none`), activable explicitement (case à cocher / `--network`).
+- **Mémoire et CPU plafonnés** (512 Mo / 30s par défaut, configurables) et capacités système
+  supprimées (`--caps.drop=all --nonewprivs --seccomp`).
+- **Interpréteur en liste blanche** (python3, python, node, npm, java, ruby, php, perl) — jamais
+  de commande shell arbitraire.
+
 ## Recherche multi-sources (Phase 5)
 
 | Source | Recherche | Authentification |

@@ -428,9 +428,61 @@ def create_app() -> FastAPI:
     @app.get("/partials/installed-apps", response_class=HTMLResponse)
     def partial_installed_apps(request: Request) -> HTMLResponse:
         from core.app_install import list_installed
+        from core.app_run import RUNNERS
 
         return templates.TemplateResponse(
-            request, "partials/installed_apps.html", {"entries": list_installed()}
+            request, "partials/installed_apps.html", {"entries": list_installed(), "runners": RUNNERS}
+        )
+
+    @app.post("/api/discover/run", response_class=HTMLResponse)
+    def api_discover_run(
+        request: Request,
+        site: str = Form(...),
+        name: str = Form(...),
+        runner: str = Form(...),
+        entry: str = Form(...),
+        args: str = Form(""),
+        network: bool = Form(False),
+        confirmed: bool = Form(False),
+    ) -> HTMLResponse:
+        """Exécute RÉELLEMENT un fichier d'une app déjà installée, sandboxée par Firejail — voir
+        core/app_run.py pour toutes les garanties de sécurité. `confirmed` doit être explicitement
+        transmis (case cachée, en plus du hx-confirm côté navigateur)."""
+        import shlex
+
+        from core.app_install import InvalidNameError
+        from core.app_run import (
+            InvalidEntryError,
+            NotInstalledError,
+            RunConfirmationRequiredError,
+            SandboxUnavailableError,
+            UnknownRunnerError,
+            run_app,
+        )
+
+        error: str | None = None
+        result: dict[str, Any] | None = None
+        try:
+            extra_args = shlex.split(args) if args.strip() else []
+            result = run_app(
+                site, name, runner, entry, extra_args, network=network, confirmed=confirmed
+            )
+        except (
+            InvalidNameError,
+            NotInstalledError,
+            UnknownRunnerError,
+            InvalidEntryError,
+            SandboxUnavailableError,
+            RunConfirmationRequiredError,
+        ) as exc:
+            error = str(exc)
+        except ValueError as exc:  # arguments mal quotés (shlex.split)
+            error = f"Arguments invalides : {exc}"
+
+        return templates.TemplateResponse(
+            request,
+            "partials/run_result.html",
+            {"site": site, "name": name, "error": error, "result": result},
         )
 
     @app.get("/api/notifications")

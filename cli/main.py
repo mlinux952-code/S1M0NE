@@ -16,6 +16,9 @@ Commandes disponibles :
     S1M0NE, consultable hors-ligne, sans mise à jour automatique (Cat. G)
     s1mone discover install/installed -> installation RÉELLE (npm/pip/git), confinée sous
     fs_root/installed_apps/, jamais globale sur la machine — confirmation obligatoire (Cat. G+)
+    s1mone discover run/runs -> exécution RÉELLE d'une app déjà installée, sandboxée par
+    Firejail (namespaces + seccomp + limites RAM/CPU + réseau coupé par défaut) — jamais sans
+    sandbox, confirmation obligatoire (Cat. G++)
 
 Le terminal doit rester utilisable même sans l'interface web (mega-prompt §6) :
 cette CLI ne dépend d'aucun serveur, elle appelle directement les modules core/system.
@@ -1150,6 +1153,94 @@ def discover_installed_cmd() -> None:
     for e in entries:
         status = "[green]ok[/green]" if e["ok"] else "[red]échec[/red]"
         table.add_row(e["site"], e["name"], status, e["install_dir"])
+    console.print(table)
+
+
+@discover_app.command("run")
+def discover_run_cmd(
+    site: str = typer.Argument(..., help="Site de l'app déjà installée (github, npm, pypi...)."),
+    name: str = typer.Argument(..., help="Nom du paquet/dépôt tel qu'installé (ex: 'owner/repo')."),
+    runner: str = typer.Argument(..., help="Interpréteur autorisé : python3, python, node, npm, java, ruby, php, perl."),
+    entry: str = typer.Argument(..., help="Fichier à exécuter, relatif au dossier installé."),
+    args: list[str] = typer.Argument(None, help="Arguments supplémentaires passés au script."),
+    network: bool = typer.Option(False, "--network", help="Autoriser l'accès réseau (coupé par défaut)."),
+    memory_mb: int = typer.Option(512, "--memory-mb", help="Limite mémoire du sandbox (Mo)."),
+    cpu_seconds: int = typer.Option(30, "--cpu-seconds", help="Limite de temps CPU du sandbox (s)."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Ne pas demander de confirmation."),
+) -> None:
+    """Exécute RÉELLEMENT un fichier d'une app déjà installée (Cat. G+), confinée par Firejail
+    (namespaces + seccomp, aucun daemon, overhead quasi nul — pas de VM, adapté à une machine
+    faible). Réseau coupé par défaut, mémoire/CPU plafonnés, vue disque restreinte au dossier de
+    l'app. Refuse d'exécuter si Firejail n'est pas installé (jamais de repli non sandboxé)."""
+    from core.app_install import InvalidNameError
+    from core.app_run import (
+        InvalidEntryError,
+        NotInstalledError,
+        RunConfirmationRequiredError,
+        SandboxUnavailableError,
+        UnknownRunnerError,
+        run_app,
+    )
+
+    if not yes:
+        console.print(
+            f"[yellow]Exécution réelle de '{name}' ({site}) via {runner} — sandboxée par "
+            f"Firejail, réseau {'autorisé' if network else 'coupé'}.[/yellow]"
+        )
+        if not typer.confirm("Confirmer l'exécution ?"):
+            console.print("[grey58]Annulé.[/grey58]")
+            raise typer.Exit(code=0)
+
+    try:
+        result = run_app(
+            site,
+            name,
+            runner,
+            entry,
+            list(args or []),
+            network=network,
+            memory_mb=memory_mb,
+            cpu_seconds=cpu_seconds,
+            confirmed=True,
+        )
+    except (
+        InvalidNameError,
+        NotInstalledError,
+        UnknownRunnerError,
+        InvalidEntryError,
+        SandboxUnavailableError,
+    ) as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=1) from exc
+    except RunConfirmationRequiredError as exc:  # ne devrait pas arriver ici (confirmed=True)
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=1) from exc
+
+    status = "[green]réussie[/green]" if result["ok"] else "[red]échouée[/red]"
+    console.print(f"Commande : [dim]{result['command_display']}[/dim]")
+    console.print(f"Exécution {status} en {result['duration_seconds']}s")
+    console.print(result["output"])
+    if not result["ok"]:
+        raise typer.Exit(code=1)
+
+
+@discover_app.command("runs")
+def discover_runs_cmd() -> None:
+    """Historique des exécutions réelles effectuées via S1M0NE (plus récentes en premier)."""
+    from core.app_run import list_runs
+
+    entries = list_runs()
+    if not entries:
+        console.print("[grey58]Aucune exécution effectuée pour l'instant.[/grey58]")
+        return
+    table = Table(title="Exécutions d'apps installées via S1M0NE")
+    table.add_column("Site")
+    table.add_column("Nom")
+    table.add_column("Commande")
+    table.add_column("Statut")
+    for e in entries:
+        status = "[green]ok[/green]" if e["ok"] else "[red]échec[/red]"
+        table.add_row(e["site"], e["name"], e["command_display"], status)
     console.print(table)
 
 
