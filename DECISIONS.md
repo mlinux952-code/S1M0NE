@@ -548,3 +548,39 @@ pour que S1M0NE fonctionne. Conforme à la règle LOW RESOURCE FIRST (§3 du mé
 - Suite complète après Catégorie F : **512/512 passed** (43 nouveaux tests : `test_url_check.py`,
   `test_feed_check.py`, `test_notes.py`, `test_cli_notes.py`, `test_web_notes.py`, ajouts dans
   `test_tasks.py` et `test_db.py`).
+
+## D22 — Catégorie G : catalogue statique "100 meilleures apps" sur les 7 sites connectés
+
+- **Contexte** : demande explicite de l'utilisateur (présentée comme "un examen") — rechercher les
+  meilleurs projets sur les 7 sites déjà connectés à S1M0NE (npm, PyPI, GitHub, GitLab, Codeberg,
+  Hugging Face, SourceForge) et les intégrer "sans un seul mise à jour", façon couteau suisse :
+  consultable hors-ligne, embarqué avec S1M0NE, aucune dépendance réseau.
+- **Décision : catalogue statique (fichier JSON figé), pas une nouvelle forme de recherche en
+  direct.** `data/discover_catalog.json` contient exactement 100 entrées réelles (name, site,
+  category, description, url), compilées le 2026-09-27 par 7 recherches web successives (une par
+  site), jamais rafraîchies automatiquement. Répartition : npm=15, pypi=15, github=20,
+  huggingface=15, gitlab=10, codeberg=12, sourceforge=13. `[DECIDED]`
+- **Honnêteté avant exhaustivité** : plusieurs sources de recherche contenaient des exemples
+  génériques/fabriqués (ex. "Project A"/"ProjectX" pour GitLab sur une source de mauvaise
+  qualité) — délibérément écartés du catalogue. De même, deux projets confirmés migrés vers
+  Codeberg (GNU Guix, BookStack) ont été écartés faute de chemin de dépôt exact vérifiable,
+  plutôt que de deviner une URL au risque qu'elle soit fausse. Principe : zéro entrée inventée,
+  URL vérifiée ou construite via un pattern fiable (ex. `pypi.org/project/<nom>`), jamais devinée
+  à l'aveugle quand la source ne donnait pas le chemin exact.
+- **`core/discover.py`** : lecture unique du JSON (`functools.lru_cache`), chemin résolu
+  relativement au module (indépendant du cwd, même principe que les autres modules `core/`).
+  Fonctions `list_entries(site=, category=)`, `search_catalog(query, limit=)` (sous-chaîne
+  insensible à la casse sur nom/description/catégorie — un `LIKE` suffit pour 100 entrées, FTS5
+  aurait été disproportionné ici contrairement à `core/notes.py` qui doit passer à l'échelle sur
+  un vrai corpus personnel), `catalog_metadata()`, `available_sites()`.
+- **CLI** : `s1mone discover list [--site] [--category]`, `s1mone discover search <requête>`,
+  `s1mone discover sites`. Chaque affichage rappelle explicitement la date de compilation et le
+  caractère non-live (jamais de fausse impression de données en temps réel). Aucune de ces
+  commandes ne touche à la base SQLite (fichier JSON pur) — donc aucun risque de reproduire le
+  bug `_COMMANDS_NEEDING_DB` (D21).
+- **Web** : nouvelle page `/discover` (lien de nav ajouté à côté de `/search`, avec renvoi
+  explicite vers `/search` pour qui veut du temps réel) + partial htmx `GET /partials/discover`
+  (mêmes filtres `q`/`site` que la CLI), suivant le pattern déjà établi pour
+  `/partials/notes-search` (D21/F.1).
+- Suite complète après Catégorie G : **537/537 passed** (25 nouveaux tests : `test_discover.py`,
+  `test_cli_discover.py`, `test_web_discover.py`).

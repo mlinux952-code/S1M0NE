@@ -363,6 +363,33 @@ def create_app() -> FastAPI:
             {"query": q, "results": results, "available": available, "error": error},
         )
 
+    @app.get("/discover", response_class=HTMLResponse)
+    def discover_page(request: Request) -> HTMLResponse:
+        """Catalogue statique de découverte (Catégorie G) : 100 projets réels et notables
+        (npm/PyPI/GitHub/GitLab/Codeberg/HuggingFace/SourceForge), compilés une fois par
+        recherche web et embarqués avec S1M0NE — consultable hors-ligne, sans jamais interroger
+        les vraies API (contrairement à /search, Phase 5, qui lui fait de la recherche en
+        direct)."""
+        from core.discover import available_sites, catalog_metadata
+
+        return templates.TemplateResponse(
+            request,
+            "discover.html",
+            {"sites": available_sites(), "meta": catalog_metadata()},
+        )
+
+    @app.get("/partials/discover", response_class=HTMLResponse)
+    def partial_discover(request: Request, q: str = "", site: str = "") -> HTMLResponse:
+        from core.discover import list_entries, search_catalog
+
+        if q.strip():
+            results = search_catalog(q, limit=100)
+        else:
+            results = list_entries(site=site or None)
+        return templates.TemplateResponse(
+            request, "partials/discover_results.html", {"results": results, "query": q}
+        )
+
     @app.get("/api/notifications")
     def api_notifications_list(unread_only: bool = False, limit: int = 50) -> dict[str, Any]:
         return {

@@ -382,6 +382,21 @@ attendre de sélection précise à chaque étape (même mandat que pour les Phas
       initialisée) et un piège Rich (crochets de `snippet()` interprétés comme balises de style),
       même piège déjà vu pour `config show` (D20).
     - Suite complète : **512/512 passed** (43 nouveaux tests).
+  - **Catégorie G — catalogue statique "100 meilleures apps" (demande explicite de l'utilisateur,
+    présentée comme "un examen") : terminée.** Voir DECISIONS.md D22.
+    - `data/discover_catalog.json` : exactement 100 entrées réelles et vérifiées par recherche
+      web (npm=15, pypi=15, github=20, huggingface=15, gitlab=10, codeberg=12, sourceforge=13),
+      compilées le 2026-09-27, **jamais rafraîchies automatiquement** (fidèle à la demande "sans
+      un seul mise à jour" — couteau suisse hors-ligne). Plusieurs sources de mauvaise qualité
+      (exemples génériques/fabriqués) ont été écartées par prudence plutôt que retenues.
+    - `core/discover.py` : `list_entries()`, `search_catalog()`, `catalog_metadata()`,
+      `available_sites()` — lecture JSON pure, aucune base de données, aucun appel réseau.
+    - CLI : `s1mone discover list/search/sites` — chaque sortie rappelle la date de compilation et
+      le caractère non-live.
+    - Web : nouvelle page `/discover` (+ lien de nav), partial htmx `/partials/discover`, avec
+      renvoi explicite vers `/search` pour qui veut du temps réel (transparence).
+    - Suite complète : **537/537 passed** (25 nouveaux tests : `test_discover.py`,
+      `test_cli_discover.py`, `test_web_discover.py`).
   - **Post-catégorie D, deux correctifs suite à la mise à jour réelle chez l'utilisateur** :
     1. `install.sh` et `scripts/*.sh` avaient perdu leur bit exécutable dans un commit précédent
        (bug de l'environnement de travail de l'agent) → `./install.sh` échouait avec "Permission

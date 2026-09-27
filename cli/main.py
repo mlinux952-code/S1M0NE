@@ -11,6 +11,9 @@ Commandes disponibles :
     s1mone notes index/search  -> mini second brain : recherche plein texte de tes notes (Cat. F)
     (Cat. F : nouveaux types de tâche planifiables 'url_check' et 'rss_check', voir
      's1mone schedule create --help')
+    s1mone discover list/search/sites -> catalogue statique de 100 projets notables sur les 7
+    sites connectés (npm/PyPI/GitHub/GitLab/Codeberg/HuggingFace/SourceForge), embarqué avec
+    S1M0NE, consultable hors-ligne, sans mise à jour automatique (Cat. G)
 
 Le terminal doit rester utilisable même sans l'interface web (mega-prompt §6) :
 cette CLI ne dépend d'aucun serveur, elle appelle directement les modules core/system.
@@ -98,6 +101,12 @@ app.add_typer(cache_app, name="cache")
 
 notes_app = typer.Typer(help="Recherche plein texte de notes personnelles (Catégorie F, mini second brain).")
 app.add_typer(notes_app, name="notes")
+
+discover_app = typer.Typer(
+    help="Catalogue statique de 100 projets réels notables (npm/PyPI/GitHub/GitLab/Codeberg/"
+    "HuggingFace/SourceForge), embarqué avec S1M0NE — consultable hors-ligne (Catégorie G)."
+)
+app.add_typer(discover_app, name="discover")
 
 
 _COMMANDS_NEEDING_DB = {
@@ -1015,6 +1024,57 @@ def notes_clear_cmd(
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(code=1) from exc
     console.print(f"[yellow]{n} note(s) retirée(s) de l'index.[/yellow]")
+
+
+@discover_app.command("list")
+def discover_list_cmd(
+    site: Optional[str] = typer.Option(None, "--site", help="Filtrer par site (npm, pypi, github, gitlab, codeberg, huggingface, sourceforge)."),
+    category: Optional[str] = typer.Option(None, "--category", help="Filtrer par catégorie (ex: 'CLI', 'self-hosted', 'LLM'...)."),
+) -> None:
+    """Liste le catalogue statique de découverte (Catégorie G) : 100 projets réels et notables,
+    compilés une fois par recherche web, embarqués avec S1M0NE — zéro appel réseau pour parcourir
+    cette liste. Pour une recherche EN DIRECT sur ces mêmes sites, voir 's1mone search'."""
+    from core.discover import catalog_metadata, list_entries
+
+    entries = list_entries(site=site, category=category)
+    meta = catalog_metadata()
+    table = Table(title=f"S1M0NE — catalogue de découverte (compilé le {meta['compiled_on']})")
+    table.add_column("Nom")
+    table.add_column("Site")
+    table.add_column("Catégorie")
+    table.add_column("Description")
+    for e in entries:
+        table.add_row(e["name"], e["site"], e["category"], e["description"])
+    console.print(table)
+    console.print(f"[dim]{len(entries)} / {meta['total']} entrées. {meta['note']}[/dim]")
+
+
+@discover_app.command("search")
+def discover_search_cmd(
+    query: str = typer.Argument(..., help="Mot recherché (nom, description ou catégorie)."),
+) -> None:
+    """Recherche par mot-clé dans le catalogue statique de découverte (Catégorie G)."""
+    from rich.markup import escape
+
+    from core.discover import search_catalog
+
+    results = search_catalog(query)
+    if not results:
+        console.print("[grey58]Aucun résultat.[/grey58]")
+        return
+    for e in results:
+        console.print(f"[bold]{escape(e['name'])}[/bold] [dim]({e['site']} / {e['category']})[/dim]")
+        console.print(f"  {escape(e['description'])}")
+        console.print(f"  [blue]{e['url']}[/blue]")
+
+
+@discover_app.command("sites")
+def discover_sites_cmd() -> None:
+    """Liste les sites présents dans le catalogue de découverte."""
+    from core.discover import available_sites
+
+    for s in available_sites():
+        console.print(f"- {s}")
 
 
 @backup_app.command("create")

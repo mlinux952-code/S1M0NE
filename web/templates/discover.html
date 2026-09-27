@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Découverte{% endblock %}
+{% block content %}
+<h1>Découverte (Catégorie G)</h1>
+<p class="hint">
+    Catalogue <strong>statique</strong> : {{ meta.total }} projets réels et notables sur les 7
+    sites déjà connectés à S1M0NE (npm, PyPI, GitHub, GitLab, Codeberg, Hugging Face,
+    SourceForge), compilés une fois par recherche web le {{ meta.compiled_on }} et embarqués
+    directement dans S1M0NE. Aucun appel réseau pour parcourir cette page — mais aussi aucune
+    mise à jour automatique des chiffres de popularité. Pour une recherche EN DIRECT sur ces
+    mêmes sites, utilise plutôt <a href="/search">/search</a>.
+</p>
+
+<form hx-get="/partials/discover" hx-target="#discover-results" hx-trigger="submit, load" hx-swap="innerHTML">
+    <input type="search" name="q" placeholder="mots recherchés…" style="width:16rem;">
+    <label style="margin-left:1rem;">Site :
+        <select name="site">
+            <option value="">tous</option>
+            {% for s in sites %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+        </select>
+    </label>
+    <button type="submit">Filtrer</button>
+</form>
+
+<div id="discover-results" style="margin-top:1rem;">
+    <p class="muted">Chargement…</p>
+</div>
+{% endblock %}
