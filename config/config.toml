@@ -49,7 +49,7 @@ default_provider = "groq"
 # Surcharge de modèle par fournisseur (facultatif — sinon chaque fournisseur a un modèle par
 # défaut raisonnable codé en dur dans ai/providers/*.py).
 # [ai.groq]
-# model = "llama-3.1-8b-instant"
+# model = "openai/gpt-oss-120b"
 # [ai.openrouter]
 # model = "meta-llama/llama-3.3-70b-instruct:free"
 # [ai.ollama]

@@ -1,8 +1,13 @@
 """ai/providers/groq.py — Fournisseur Groq (Phase 6).
 
-Recommandé par défaut : API compatible OpenAI, aucune carte bancaire requise, quota gratuit
-généreux et rapide (LPU dédié). Vérifié en direct (recherche web, septembre 2026) : 30 req/min,
-et selon le modèle jusqu'à 500 000 tokens/jour sans frais. Clé gratuite : https://console.groq.com
+Recommandé par défaut : API compatible OpenAI, aucune carte bancaire requise pour créer un
+compte. Catalogue de modèles vérifié en direct sur https://console.groq.com/docs/models
+(dernière vérification : septembre 2026) — Groq a fait passer ses modèles Llama (3.1 8B,
+3.3 70B) en accès "Enterprise" (contact commercial), ils NE sont plus utilisables avec une simple
+clé développeur gratuite. Modèle par défaut retenu ici : openai/gpt-oss-20b (modèle "Production",
+accessible avec une clé standard, très rapide ~1000 tok/s). Comme pour OpenRouter, ce catalogue
+peut encore changer : configurable sans toucher au code via config.toml [ai.groq] model = "...".
+Clé gratuite : https://console.groq.com/keys
 """
 
 from __future__ import annotations
@@ -24,7 +29,7 @@ class GroqProvider(AIProvider):
         "Groq (console.groq.com) — Llama/Qwen/Gemma hébergés, gratuit sans carte bancaire, "
         "réponses très rapides. Quota : ~30 req/min, jusqu'à 500k tokens/jour selon le modèle."
     )
-    default_model = "llama-3.3-70b-versatile"
+    default_model = "openai/gpt-oss-20b"
 
     def __init__(self, client: httpx.AsyncClient | None = None) -> None:
         # `client` injectable pour les tests (httpx.MockTransport) sans appel réseau réel,
@@ -72,6 +77,13 @@ class GroqProvider(AIProvider):
             raise ProviderError(
                 "Quota gratuit Groq dépassé pour l'instant (429). Réessaie dans quelques minutes, "
                 "ou change de modèle/fournisseur (voir 's1mone chat --list-providers')."
+            )
+        if response.status_code == 404:
+            raise ProviderError(
+                f"Modèle Groq '{model or self.default_model}' introuvable ou réservé aux comptes "
+                "Enterprise (404). Le catalogue Groq change régulièrement : vérifie la liste à "
+                "jour sur https://console.groq.com/docs/models et ajuste [ai.groq] model dans "
+                "config.toml (ou --model sur la ligne de commande)."
             )
         if response.status_code >= 400:
             raise ProviderError(f"Groq a renvoyé une erreur {response.status_code} : {response.text[:300]}")

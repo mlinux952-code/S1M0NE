@@ -86,6 +86,22 @@ def test_groq_chat_429_raises_quota_error(monkeypatch):
         asyncio.run(provider.chat([ChatMessage(role="user", content="salut")]))
 
 
+def test_groq_chat_404_model_gone_gives_actionable_error(monkeypatch):
+    """Bug réel signalé par l'utilisateur (sept. 2026) : Groq a fait passer llama-3.3-70b-versatile
+    en accès Enterprise, une clé développeur gratuite reçoit un 404 dessus. Le message doit dire
+    où trouver le catalogue à jour, pas juste planter."""
+    import ai.providers.groq as groq_module
+
+    monkeypatch.setattr(groq_module.settings, "get_secret", lambda name, default=None: "fake-key")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404, json={"error": {"code": "model_not_found"}})
+
+    provider = GroqProvider(client=_mock_client(handler))
+    with pytest.raises(ProviderError, match="console.groq.com/docs/models"):
+        asyncio.run(provider.chat([ChatMessage(role="user", content="salut")]))
+
+
 def test_groq_chat_unexpected_format_never_hallucinates(monkeypatch):
     """Anti-hallucination : une réponse mal formée doit lever une erreur explicite, jamais un
     texte inventé (même règle que les connecteurs de recherche, Phase 5)."""
