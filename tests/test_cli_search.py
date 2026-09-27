@@ -41,6 +41,21 @@ def test_search_list_sources_shows_all_connectors():
     assert "sourceforge" in result.stdout
 
 
+def test_search_list_sources_works_without_any_query():
+    """Bug réel signalé par l'utilisateur : 's1mone search --list-sources' (sans terme de
+    recherche) plantait avec 'Missing argument query' car l'argument était obligatoire."""
+    result = runner.invoke(app, ["search", "--list-sources"])
+    assert result.exit_code == 0
+    assert "npm" in result.stdout
+
+
+def test_search_without_query_and_without_list_sources_shows_clear_error(tmp_path, monkeypatch):
+    monkeypatch.setenv("S1MONE_DATA_DIR", str(tmp_path))
+    result = runner.invoke(app, ["search"])
+    assert result.exit_code == 1
+    assert "manquant" in result.stdout.lower() or "manquant" in str(result.exception)
+
+
 def test_search_command_displays_results(tmp_path, monkeypatch):
     monkeypatch.setenv("S1MONE_DATA_DIR", str(tmp_path))
     monkeypatch.setattr(cli_main, "search_all", _fake_search_all)

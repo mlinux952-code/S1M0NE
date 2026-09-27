@@ -155,7 +155,9 @@ def version() -> None:
 
 @app.command()
 def search(
-    query: str = typer.Argument(..., help="Terme à rechercher."),
+    query: Optional[str] = typer.Argument(
+        None, help="Terme à rechercher (facultatif avec --list-sources)."
+    ),
     sources: Optional[str] = typer.Option(
         None,
         "--sources",
@@ -176,6 +178,11 @@ def search(
             table.add_row(c["name"], c["description"])
         console.print(table)
         return
+
+    if not query or not query.strip():
+        console.print("[red]Terme de recherche manquant.[/red] Exemple : s1mone search react")
+        console.print("(ou 's1mone search --list-sources' pour voir les sources disponibles)")
+        raise typer.Exit(code=1)
 
     source_list = [s.strip() for s in sources.split(",") if s.strip()] if sources else None
     outcome = asyncio.run(search_all(query, limit_per_source=limit, sources=source_list))
