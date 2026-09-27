@@ -107,6 +107,17 @@ L'assistant sait aussi ce qu'est S1M0NE (message système d'auto-présentation i
 conversation). Pour repartir d'une page blanche : `s1mone chat --reset`, `/reset` en conversation
 interactive, ou le bouton "Nouvelle conversation" sur `/chat`.
 
+Transparence : tout ce que S1M0NE retient reste inspectable et supprimable depuis la CLI —
+rien n'est caché.
+
+```bash
+s1mone memory list                              # tout ce qui est mémorisé (métadonnées)
+s1mone memory list --level persistent           # filtré par niveau
+s1mone memory show persistent chat_history      # contenu complet d'une entrée
+s1mone memory forget persistent chat_history    # supprime une entrée (demande confirmation)
+s1mone memory forget persistent chat_history -y # supprime sans demander de confirmation
+```
+
 ## Recherche multi-sources (Phase 5)
 
 | Source | Recherche | Authentification |

@@ -41,7 +41,13 @@
   `/chat`, au lieu de repartir de zéro — plus un message système d'auto-présentation de S1M0NE
   (corrige le cas réel observé : l'assistant ne savait pas ce qu'était S1M0NE). `--reset` / `/reset`
   / bouton "Nouvelle conversation" pour repartir à zéro. Voir DECISIONS.md §D12.
-- **144/144 tests automatisés passent** dans le sandbox.
+- **Polish post-Phase 7 (terminée en sandbox, en attente de validation machine réelle) :**
+  - `s1mone memory list/show/forget` : transparence sur ce qui est mémorisé (métadonnées,
+    contenu complet, suppression avec confirmation) — demandé par cohérence avec la Phase 7.
+  - Tableau `s1mone search` réécrit en une seule ligne par résultat (`overflow="ellipsis"` +
+    nettoyage des descriptions contenant des retours à la ligne bruts) : corrige le rough edge
+    "tableau trop large / difficile à lire" identifié précédemment.
+- **152/152 tests automatisés passent** dans le sandbox.
 
 ## Workflow de livraison (actuel, définitif)
 

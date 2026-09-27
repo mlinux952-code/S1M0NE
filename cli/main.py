@@ -26,6 +26,7 @@ from ai.gateway import available_providers
 from ai.gateway import converse as ai_converse
 from ai.gateway import reset_conversation
 from connectors.engine import available_connectors, search_all
+from core import memory as memory_module
 from core.config import settings
 from core.timeutil import format_timestamp
 from system.healthcheck import run_all_checks
@@ -50,8 +51,11 @@ console = Console()
 task_app = typer.Typer(help="Gestion des tâches (Task Manager).")
 app.add_typer(task_app, name="task")
 
+memory_app = typer.Typer(help="Inspection de la mémoire persistante (Phase 7).")
+app.add_typer(memory_app, name="memory")
 
-_COMMANDS_NEEDING_DB = {"status", "task", "search", "chat"}
+
+_COMMANDS_NEEDING_DB = {"status", "task", "search", "chat", "memory"}
 
 
 @app.callback()
@@ -195,20 +199,31 @@ def search(
     errors = outcome["errors"]
     cache_hits = outcome["cache_hits"]
 
+    # overflow="ellipsis" + no_wrap=True : une seule ligne par résultat, tronquée proprement avec
+    # "…", au lieu de tableaux qui explosent sur 4-5 lignes par résultat (retour utilisateur :
+    # "tableau trop large / difficile à lire" — voir PROJECT_STATE.md).
     table = Table(title=f"S1M0NE — recherche : \"{query}\"")
-    table.add_column("Source")
-    table.add_column("Nom")
-    table.add_column("Description", max_width=50)
-    table.add_column("URL", max_width=40)
+    table.add_column("Source", max_width=12, no_wrap=True)
+    table.add_column("Nom", max_width=28, overflow="ellipsis", no_wrap=True)
+    table.add_column("Description", max_width=45, overflow="ellipsis", no_wrap=True)
+    table.add_column("URL", max_width=35, overflow="ellipsis", no_wrap=True, style="grey58")
 
     for r in results:
-        note = " [grey58](nom exact)[/grey58]" if r.get("extra", {}).get("exact_match_only") else ""
-        table.add_row(r["source"], r["name"] + note, r.get("description") or "", r.get("url") or "")
+        note = " *" if r.get("extra", {}).get("exact_match_only") else ""
+        # Certaines sources renvoient des descriptions avec des retours à la ligne bruts (ex.
+        # GitLab) : on les aplatit pour garantir une seule ligne par résultat dans le tableau.
+        description = " ".join((r.get("description") or "").split())
+        table.add_row(r["source"], r["name"] + note, description, r.get("url") or "")
 
     console.print(table)
 
     if not results:
         console.print("[grey58]Aucun résultat.[/grey58]")
+    elif any(r.get("extra", {}).get("exact_match_only") for r in results):
+        console.print(
+            "[grey58]* = résultat par nom exact uniquement (pas de recherche par mot-clé sur "
+            "cette source)[/grey58]"
+        )
 
     if cache_hits:
         console.print(f"[grey58]Servi depuis le cache : {', '.join(sorted(cache_hits))}[/grey58]")
@@ -412,6 +427,69 @@ def task_worker(
         asyncio.run(worker_loop(interval_seconds=interval))
     except KeyboardInterrupt:
         console.print("\n[yellow]Worker arrêté.[/yellow]")
+
+
+@memory_app.command("list")
+def memory_list(
+    level: Optional[str] = typer.Option(
+        None,
+        "--level",
+        help=f"Filtrer par niveau ({', '.join(memory_module.VALID_LEVELS)}). Défaut : tous.",
+    ),
+) -> None:
+    """Liste les entrées mémorisées (métadonnées uniquement — voir 'memory show' pour le contenu).
+
+    Transparence (Phase 7) : tout ce que S1M0NE retient de toi (ex. l'historique de chat) reste
+    inspectable et supprimable à tout moment, rien n'est caché."""
+    try:
+        entries = memory_module.list_memory(level)
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=1) from exc
+    table = Table(title="S1M0NE — mémoire")
+    table.add_column("Niveau")
+    table.add_column("Clé")
+    table.add_column("Enregistrée à")
+    for e in entries:
+        table.add_row(e["level"], e["key"], _fmt_ts(e["created_at"]))
+    console.print(table)
+    if not entries:
+        console.print("[grey58]Aucune entrée pour ce filtre.[/grey58]")
+
+
+@memory_app.command("show")
+def memory_show(
+    level: str = typer.Argument(..., help=f"Niveau ({', '.join(memory_module.VALID_LEVELS)})."),
+    key: str = typer.Argument(..., help="Clé (voir 's1mone memory list')."),
+) -> None:
+    """Affiche le contenu complet d'une entrée mémorisée."""
+    try:
+        value = memory_module.recall(level, key)
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=1) from exc
+    if value is None:
+        console.print(f"[red]Aucune entrée pour {level}/{key}.[/red]")
+        raise typer.Exit(code=1)
+    console.print_json(json.dumps(value, ensure_ascii=False))
+
+
+@memory_app.command("forget")
+def memory_forget(
+    level: str = typer.Argument(..., help=f"Niveau ({', '.join(memory_module.VALID_LEVELS)})."),
+    key: str = typer.Argument(..., help="Clé (voir 's1mone memory list')."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Ne pas demander de confirmation."),
+) -> None:
+    """Supprime une entrée mémorisée (ex. 'memory forget persistent chat_history' = comme
+    's1mone chat --reset', mais depuis l'extérieur d'une conversation)."""
+    if level not in memory_module.VALID_LEVELS:
+        console.print(f"[red]Niveau de mémoire invalide : '{level}'. Attendu : {memory_module.VALID_LEVELS}.[/red]")
+        raise typer.Exit(code=1)
+    if not yes and not typer.confirm(f"Supprimer définitivement {level}/{key} ?"):
+        console.print("[grey58]Annulé.[/grey58]")
+        raise typer.Exit(code=0)
+    memory_module.forget(level, key)
+    console.print(f"[yellow]Supprimé : {level}/{key}[/yellow]")
 
 
 def main() -> None:
