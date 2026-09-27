@@ -147,6 +147,35 @@ def test_missing_binary_is_handled_gracefully(monkeypatch):
     assert "introuvable" in result["output"]
 
 
+def test_git_clone_disables_lfs_smudge_to_protect_low_resource_machines(monkeypatch):
+    """Demande implicite de l'utilisateur ('mon pc est faible') : cloner un dépôt Hugging Face
+    ne doit jamais télécharger automatiquement des poids de modèles pouvant faire plusieurs Go —
+    seul git-lfs pull, lancé explicitement par l'utilisateur, doit pouvoir déclencher ça."""
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["env"] = kwargs.get("env")
+        return _FakeCompletedProcess(0, "Cloning...\n")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    install_app(
+        "huggingface", "hexgrad__Kokoro-82M", "https://huggingface.co/hexgrad/Kokoro-82M", confirmed=True
+    )
+    assert captured["env"]["GIT_LFS_SKIP_SMUDGE"] == "1"
+
+
+def test_npm_install_does_not_set_lfs_env_var_unnecessarily(monkeypatch):
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["env"] = kwargs.get("env")
+        return _FakeCompletedProcess(0, "ok\n")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    install_app("npm", "is-odd", confirmed=True)
+    assert "GIT_LFS_SKIP_SMUDGE" not in captured["env"]
+
+
 def test_list_installed_most_recent_first(monkeypatch):
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: _FakeCompletedProcess(0, "ok\n"))
     install_app("npm", "is-odd", confirmed=True)

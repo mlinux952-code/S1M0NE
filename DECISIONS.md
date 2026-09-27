@@ -637,3 +637,16 @@ pour que S1M0NE fonctionne. Conforme à la règle LOW RESOURCE FIRST (§3 du mé
   les tests mockés vérifient.
 - Suite complète après Catégorie G+ : **565/565 passed** (28 nouveaux tests :
   `test_app_install.py`, `test_cli_app_install.py`, `test_web_app_install.py`).
+- **Correctif immédiat suite à une remarque de l'utilisateur** ("mon pc est faible") après avoir
+  testé `s1mone discover install github ollama --url ...` : vérifié concrètement (pas supposé)
+  qu'un `git clone --depth 1` d'un dépôt GitHub ne récupère QUE le code source (75 Mo pour
+  ollama/ollama, aucune compilation, aucune exécution, aucun modèle) — donc pas de risque réel
+  pour une machine faible dans ce cas précis. En revanche, un vrai risque identifié et corrigé :
+  les dépôts **Hugging Face** utilisent souvent Git LFS pour les poids de modèles (plusieurs
+  dizaines de Go pour Llama-3.1-8B, FLUX.1-dev, DeepSeek-R1...) — si `git-lfs` est configuré sur
+  la machine de l'utilisateur, un clone classique les télécharge automatiquement. Corrigé en
+  forçant `GIT_LFS_SKIP_SMUDGE=1` sur tout clone git déclenché par S1M0NE : seuls des fichiers
+  pointeurs (quelques Ko) sont récupérés par défaut, jamais les poids réels — vérifié en sandbox
+  (clone Hugging Face Kokoro-82M : 4.3 Mo au lieu du poids réel du modèle). L'utilisateur qui
+  veut vraiment les poids complets doit lancer `git lfs pull` lui-même, en connaissance de cause.
+  2 nouveaux tests de régression. Suite complète : **567/567 passed**.

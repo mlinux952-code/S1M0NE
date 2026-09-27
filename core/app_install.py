@@ -29,6 +29,7 @@ Choix de sécurité (mega-prompt §10/§31, même esprit que `core/permissions.p
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import sys
@@ -126,6 +127,26 @@ def build_command(site: str, name: str, url: str | None, dest: Path) -> list[str
     raise UnsupportedSiteError(site)
 
 
+def _subprocess_env(site: str) -> dict[str, str]:
+    """Environnement transmis à la commande d'installation.
+
+    **Protection LOW RESOURCE FIRST spécifique à `git clone`** : certains dépôts (surtout
+    Hugging Face, où les poids de modèles font parfois plusieurs dizaines de Go — Llama-3.1-8B,
+    FLUX.1-dev, DeepSeek-R1...) utilisent Git LFS. Si `git-lfs` est installé et configuré sur la
+    machine de l'utilisateur, un `git clone` classique télécharge AUTOMATIQUEMENT tous les
+    fichiers volumineux — risque réel de saturer une machine faible en disque/bande passante en
+    un seul clic. `GIT_LFS_SKIP_SMUDGE=1` force le clone à ne récupérer que de petits fichiers
+    pointeurs (quelques Ko), jamais les poids réels — vérifié en sandbox : un clone Hugging Face
+    passe de plusieurs Go potentiels à quelques Mo. L'utilisateur qui veut vraiment les poids
+    complets doit ensuite lancer `git lfs pull` lui-même dans le dossier installé, en toute
+    connaissance de cause (jamais une action aussi lourde ne doit être déclenchée en un clic
+    sans que l'utilisateur sache ce qu'il télécharge)."""
+    env = dict(os.environ)
+    if site in _GIT_HOSTS:
+        env["GIT_LFS_SKIP_SMUDGE"] = "1"
+    return env
+
+
 def _record(entry: dict[str, Any]) -> None:
     log = memory.recall("persistent", _MEMORY_KEY, default=[])
     log.append(entry)
@@ -178,6 +199,7 @@ def install_app(
             capture_output=True,
             text=True,
             timeout=timeout,
+            env=_subprocess_env(site),
         )
         output = (result.stdout or "") + (result.stderr or "")
         ok = result.returncode == 0
