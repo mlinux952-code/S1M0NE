@@ -30,11 +30,11 @@ def test_recall_missing_key_returns_default():
 
 
 def test_remember_overwrites_previous_value_for_same_level_and_key():
-    memory.remember("session", "x", 1)
-    memory.remember("session", "x", 2)
-    assert memory.recall("session", "x") == 2
+    memory.remember("temporary", "x", 1)
+    memory.remember("temporary", "x", 2)
+    assert memory.recall("temporary", "x") == 2
     # une seule entrée doit rester, pas un historique qui s'accumule
-    assert len(memory.list_memory("session")) == 1
+    assert len(memory.list_memory("temporary")) == 1
 
 
 def test_forget_removes_the_entry():
@@ -169,3 +169,66 @@ def test_list_memory_empty_query_string_is_ignored():
     memory.remember("temporary", "note", "valeur")
     assert len(memory.list_memory(query="   ")) == 1
     assert len(memory.list_memory(query="")) == 1
+
+
+# --- Niveau "session" (Catégorie D §D.3, "et plus encore" post-NEXT_STEPS.md) --------------------
+
+
+def test_session_level_requires_session_id():
+    with pytest.raises(ValueError, match="session_id"):
+        memory.remember("session", "note", "salut")
+
+
+def test_non_session_level_rejects_session_id():
+    with pytest.raises(ValueError, match="session_id"):
+        memory.remember("temporary", "note", "salut", session_id="abc")
+
+
+def test_session_scoped_memory_roundtrip():
+    memory.remember("session", "note", "salut", session_id="session-1")
+    assert memory.recall("session", "note", session_id="session-1") == "salut"
+    assert memory.recall("session", "note", session_id="session-2") is None
+
+
+def test_session_scoped_memory_isolated_between_sessions():
+    memory.remember("session", "note", "un", session_id="session-1")
+    memory.remember("session", "note", "deux", session_id="session-2")
+    assert memory.recall("session", "note", session_id="session-1") == "un"
+    assert memory.recall("session", "note", session_id="session-2") == "deux"
+
+
+def test_session_scoped_forget_only_affects_its_session():
+    memory.remember("session", "note", "un", session_id="session-1")
+    memory.remember("session", "note", "deux", session_id="session-2")
+    memory.forget("session", "note", session_id="session-1")
+    assert memory.recall("session", "note", session_id="session-1") is None
+    assert memory.recall("session", "note", session_id="session-2") == "deux"
+
+
+def test_list_memory_session_level_exposes_session_id_and_clean_key():
+    memory.remember("session", "note", "x", session_id="session-1")
+    entries = memory.list_memory("session")
+    assert len(entries) == 1
+    assert entries[0]["session_id"] == "session-1"
+    assert entries[0]["key"] == "note"  # préfixe technique retiré
+
+
+def test_list_memory_filter_by_session_id():
+    memory.remember("session", "note", "un", session_id="session-1")
+    memory.remember("session", "note", "deux", session_id="session-2")
+    entries = memory.list_memory(session_id="session-1")
+    assert len(entries) == 1
+    assert entries[0]["session_id"] == "session-1"
+
+
+def test_list_memory_session_id_filter_requires_session_level():
+    with pytest.raises(ValueError, match="session_id"):
+        memory.list_memory(level="persistent", session_id="session-1")
+
+
+def test_project_and_session_scopes_never_collide():
+    """project_id et session_id ne sont utilisables que pour LEUR niveau respectif."""
+    with pytest.raises(ValueError, match="project_id"):
+        memory.remember("session", "note", "x", project_id="projet-1")
+    with pytest.raises(ValueError, match="session_id"):
+        memory.remember("project", "note", "x", project_id="projet-1", session_id="session-1")

@@ -186,10 +186,17 @@ Phase 1+).
   écrasant la clé `ai_system_prompt` (niveau `persistent`) sans toucher au code.
 - Le niveau `project` est désormais réellement consommé (B.4, `core/projects.py` + CLI/web
   `project ...`) : chaque projet a sa propre mémoire scopée (`project_id` obligatoire), supprimée
-  automatiquement à la suppression du projet. Le niveau `session` reste seul réservé (pas encore
-  consommé) : pensé pour un futur état propre à chaque onglet navigateur/terminal. Pas d'UI
-  dédiée de navigation dans la mémoire pour le niveau `session` pour l'instant — pourrait arriver
-  plus tard si le besoin se précise (voir C.1 pour l'UI déjà livrée sur les niveaux existants).
+  automatiquement à la suppression du projet.
+- **Le niveau `session` est désormais lui aussi consommé (Catégorie D §D.3)** : "notes de
+  session" sur `/memory` (web), scopées par un cookie anonyme propre à chaque navigateur
+  (`s1mone_browser_session`, indépendant du cookie d'authentification A.1 — aucun privilège,
+  simple id de scoping). Aucun producteur côté CLI (pas de notion stable de "session terminal"
+  entre deux invocations séparées de `s1mone`, contrairement à un onglet de navigateur qui
+  persiste un cookie) : `s1mone memory list/show/forget --session-id <id>` permettent seulement
+  d'inspecter/supprimer depuis le terminal des notes déjà créées côté web. `core/memory.py`
+  généralise le mécanisme de scoping (auparavant spécifique à `project_id`) à `project` ET
+  `session` via `_SCOPE_PARAM_BY_LEVEL`. Les 4 niveaux de mémoire du mega-prompt §12 ont
+  maintenant chacun un usage réel.
 
 ## D13 — Plugins tiers (Phase 8)
 

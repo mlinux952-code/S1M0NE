@@ -109,3 +109,45 @@ def test_memory_forget_without_yes_asks_confirmation_and_respects_no(tmp_path, m
     assert result.exit_code == 0
     assert "Annulé" in result.stdout
     assert memory.recall("persistent", "chat_history") == ["quelque chose"]
+
+
+def test_memory_list_filters_by_session_id(tmp_path, monkeypatch):
+    monkeypatch.setenv("S1MONE_DATA_DIR", str(tmp_path))
+    from core.db import init_db
+
+    init_db()
+    memory.remember("session", "note", "un", session_id="session-1")
+    memory.remember("session", "note", "deux", session_id="session-2")
+
+    result = runner.invoke(app, ["memory", "list", "--session-id", "session-1"])
+    assert result.exit_code == 0
+    assert "session-1" in result.stdout
+    assert "session-2" not in result.stdout
+
+
+def test_memory_show_session_scoped_entry(tmp_path, monkeypatch):
+    monkeypatch.setenv("S1MONE_DATA_DIR", str(tmp_path))
+    from core.db import init_db
+
+    init_db()
+    memory.remember("session", "note", {"text": "salut"}, session_id="session-1")
+
+    result = runner.invoke(
+        app, ["memory", "show", "session", "note", "--session-id", "session-1"]
+    )
+    assert result.exit_code == 0
+    assert "salut" in result.stdout
+
+
+def test_memory_forget_session_scoped_entry(tmp_path, monkeypatch):
+    monkeypatch.setenv("S1MONE_DATA_DIR", str(tmp_path))
+    from core.db import init_db
+
+    init_db()
+    memory.remember("session", "note", "x", session_id="session-1")
+
+    result = runner.invoke(
+        app, ["memory", "forget", "session", "note", "--session-id", "session-1", "--yes"]
+    )
+    assert result.exit_code == 0
+    assert memory.recall("session", "note", session_id="session-1") is None

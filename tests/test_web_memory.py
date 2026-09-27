@@ -65,6 +65,74 @@ def test_memory_page_has_search_field():
     assert 'name="q"' in r.text
 
 
+# --- Notes de session (Catégorie D §D.3) --------------------------------------------------------
+
+
+def test_memory_page_sets_browser_session_cookie():
+    r = client.get("/memory")
+    assert r.status_code == 200
+    assert "s1mone_browser_session" in r.cookies
+
+
+def test_memory_page_shows_session_notes_section():
+    r = client.get("/memory")
+    assert "Notes de session" in r.text
+
+
+def test_partial_session_notes_empty_by_default():
+    local_client = TestClient(app)
+    local_client.get("/memory")  # obtient le cookie de session
+    r = local_client.get("/partials/session-notes")
+    assert r.status_code == 200
+    assert "Aucune note de session" in r.text
+
+
+def test_saving_a_session_note_makes_it_appear():
+    local_client = TestClient(app)
+    local_client.get("/memory")
+    r = local_client.post("/partials/session-notes", data={"key": "rappel", "value": "acheter du pain"})
+    assert r.status_code == 200
+    assert "rappel" in r.text
+    assert "Aucune note" not in r.text
+
+
+def test_session_notes_are_isolated_between_browser_sessions():
+    client_a = TestClient(app)
+    client_b = TestClient(app)
+    client_a.get("/memory")
+    client_b.get("/memory")
+    client_a.post("/partials/session-notes", data={"key": "note-a", "value": "x"})
+
+    r_a = client_a.get("/partials/session-notes")
+    r_b = client_b.get("/partials/session-notes")
+    assert "note-a" in r_a.text
+    assert "note-a" not in r_b.text
+    assert "Aucune note" in r_b.text
+
+
+def test_forgetting_a_session_note_removes_it():
+    local_client = TestClient(app)
+    local_client.get("/memory")
+    local_client.post("/partials/session-notes", data={"key": "rappel", "value": "x"})
+    r = local_client.post("/partials/session-notes/forget", data={"key": "rappel"})
+    assert r.status_code == 200
+    assert "Aucune note de session" in r.text
+
+
+def test_session_note_value_viewable_via_memory_value_partial():
+    local_client = TestClient(app)
+    local_client.get("/memory")
+    local_client.post("/partials/session-notes", data={"key": "rappel", "value": "acheter du pain"})
+    session_id = local_client.cookies.get("s1mone_browser_session")
+
+    r = local_client.get(
+        "/partials/memory-value",
+        params={"level": "session", "key": "rappel", "session_id": session_id},
+    )
+    assert r.status_code == 200
+    assert "acheter du pain" in r.text
+
+
 def test_partial_memory_list_shows_persisted_entries():
     from core import memory
 

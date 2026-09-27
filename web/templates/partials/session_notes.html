@@ -1,0 +1,45 @@
+<div id="session-notes-panel">
+    <form
+        hx-post="/partials/session-notes"
+        hx-target="#session-notes-panel"
+        hx-swap="outerHTML"
+        style="margin-bottom:0.75rem;"
+    >
+        <input type="text" name="key" placeholder="Clé (ex: rappel)" required style="width:10rem;">
+        <input type="text" name="value" placeholder="Contenu de la note" required style="width:16rem;">
+        <button type="submit">Ajouter une note</button>
+    </form>
+
+    {% if entries %}
+    <table>
+        <tr><th>Clé</th><th>Contenu</th><th>Enregistrée à</th><th></th></tr>
+        {% for e in entries %}
+        <tr>
+            <td><code>{{ e.key }}</code></td>
+            <td>
+                <span
+                    hx-get="/partials/memory-value?level=session&key={{ e.key }}&session_id={{ session_id }}"
+                    hx-target="#memory-value-viewer"
+                    hx-swap="innerHTML"
+                    hx-trigger="click"
+                    style="cursor:pointer; text-decoration:underline;"
+                >Voir le contenu</span>
+            </td>
+            <td>{{ e.created_display }}</td>
+            <td>
+                <button
+                    type="button"
+                    hx-post="/partials/session-notes/forget"
+                    hx-vals='{"key": "{{ e.key }}"}'
+                    hx-target="#session-notes-panel"
+                    hx-swap="outerHTML"
+                    hx-confirm="Supprimer la note de session '{{ e.key }}' ?"
+                >Supprimer</button>
+            </td>
+        </tr>
+        {% endfor %}
+    </table>
+    {% else %}
+    <p class="muted">Aucune note de session pour l'instant.</p>
+    {% endif %}
+</div>

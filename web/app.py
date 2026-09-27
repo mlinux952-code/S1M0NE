@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -61,6 +62,13 @@ templates.env.globals["auth_enabled"] = lambda: settings.web_auth_enabled
 # Liste blanche stricte : seules ces commandes en LECTURE SEULE sont exposées via le web.
 # Aucune commande système, aucune écriture, aucune exécution arbitraire (§15/§31 du mega-prompt).
 ALLOWED_WEB_COMMANDS = {"status", "system", "version"}
+
+# Cookie anonyme (Catégorie D §D.3) identifiant "cet appareil/navigateur" pour le niveau mémoire
+# "session" — totalement indépendant du cookie d'authentification (core/auth.py, A.1) : ce
+# cookie-ci ne porte aucun privilège, c'est un simple identifiant de scoping (même esprit que
+# project_id pour le niveau "project"), présent même quand l'authentification web est désactivée.
+BROWSER_SESSION_COOKIE = "s1mone_browser_session"
+BROWSER_SESSION_MAX_AGE = 365 * 24 * 3600  # 1 an : une "session" survit à la fermeture du tab
 
 
 def _run_command(command: str) -> dict[str, Any]:
@@ -526,12 +534,71 @@ def create_app() -> FastAPI:
     def memory_page(request: Request) -> HTMLResponse:
         """Page dédiée à la mémoire (NEXT_STEPS §C.1) : jusqu'ici uniquement inspectable en CLI
         ('s1mone memory list/show/forget', Phase 7). Transparence identique côté web : tout ce
-        que S1M0NE retient reste consultable et supprimable ici, rien n'est caché."""
-        return templates.TemplateResponse(
+        que S1M0NE retient reste consultable et supprimable ici, rien n'est caché.
+
+        Garantit aussi l'existence du cookie de session anonyme (D.3) avant que les partials
+        htmx (déclenchés au chargement de la page) n'en aient besoin."""
+        session_id = request.cookies.get(BROWSER_SESSION_COOKIE) or secrets.token_urlsafe(16)
+        response = templates.TemplateResponse(
             request,
             "memory.html",
-            {"levels": memory.VALID_LEVELS, "projects_list": projects.list_projects()},
+            {
+                "levels": memory.VALID_LEVELS,
+                "projects_list": projects.list_projects(),
+                "session_id": session_id,
+            },
         )
+        response.set_cookie(
+            BROWSER_SESSION_COOKIE,
+            session_id,
+            max_age=BROWSER_SESSION_MAX_AGE,
+            httponly=True,
+            samesite="lax",
+        )
+        return response
+
+    def _session_notes_response(request: Request, session_id: str) -> HTMLResponse:
+        entries = memory.list_memory(level="session", session_id=session_id)
+        for e in entries:
+            e["created_display"] = format_timestamp(e.get("created_at"))
+        response = templates.TemplateResponse(
+            request,
+            "partials/session_notes.html",
+            {"entries": entries, "session_id": session_id},
+        )
+        response.set_cookie(
+            BROWSER_SESSION_COOKIE,
+            session_id,
+            max_age=BROWSER_SESSION_MAX_AGE,
+            httponly=True,
+            samesite="lax",
+        )
+        return response
+
+    @app.get("/partials/session-notes", response_class=HTMLResponse)
+    def partial_session_notes(request: Request) -> HTMLResponse:
+        """Notes de session (Catégorie D §D.3) : premier vrai consommateur du niveau mémoire
+        'session' (réservé depuis la Phase 7). Scopées par un cookie anonyme propre à ce
+        navigateur — jamais partagées avec un autre appareil, ni avec la mémoire
+        persistante/projet."""
+        session_id = request.cookies.get(BROWSER_SESSION_COOKIE) or secrets.token_urlsafe(16)
+        return _session_notes_response(request, session_id)
+
+    @app.post("/partials/session-notes", response_class=HTMLResponse)
+    def partial_session_notes_save(
+        request: Request, key: str = Form(...), value: str = Form(...)
+    ) -> HTMLResponse:
+        session_id = request.cookies.get(BROWSER_SESSION_COOKIE) or secrets.token_urlsafe(16)
+        if key.strip():
+            memory.remember("session", key.strip(), value, session_id=session_id)
+        return _session_notes_response(request, session_id)
+
+    @app.post("/partials/session-notes/forget", response_class=HTMLResponse)
+    def partial_session_notes_forget(request: Request, key: str = Form(...)) -> HTMLResponse:
+        session_id = request.cookies.get(BROWSER_SESSION_COOKIE)
+        if session_id:
+            memory.forget("session", key, session_id=session_id)
+        return _session_notes_response(request, session_id or secrets.token_urlsafe(16))
 
     @app.get("/partials/memory-list", response_class=HTMLResponse)
     def partial_memory_list(
@@ -554,11 +621,12 @@ def create_app() -> FastAPI:
 
     @app.get("/partials/memory-value", response_class=HTMLResponse)
     def partial_memory_value(
-        request: Request, level: str = "", key: str = "", project_id: str = ""
+        request: Request, level: str = "", key: str = "", project_id: str = "", session_id: str = ""
     ) -> HTMLResponse:
         pid = project_id or None
+        sid = session_id or None
         try:
-            value = memory.recall(level, key, project_id=pid)
+            value = memory.recall(level, key, project_id=pid, session_id=sid)
         except ValueError as exc:
             return templates.TemplateResponse(
                 request, "partials/memory_value.html", {"error": str(exc)}
@@ -576,14 +644,16 @@ def create_app() -> FastAPI:
         level: str = Form(...),
         key: str = Form(...),
         project_id: str = Form(""),
+        session_id: str = Form(""),
     ) -> HTMLResponse:
         """Supprime une entrée puis recharge la liste COMPLÈTE (sans filtre) — simplification
         assumée (NEXT_STEPS §C.1) : préserver le filtre exact affiché avant suppression aurait
         exigé de le retransmettre depuis le bouton, pour un gain marginal sur une action rare."""
         pid = project_id or None
+        sid = session_id or None
         error: str | None = None
         try:
-            memory.forget(level, key, project_id=pid)
+            memory.forget(level, key, project_id=pid, session_id=sid)
         except ValueError as exc:
             error = str(exc)
         entries = memory.list_memory() if error is None else []

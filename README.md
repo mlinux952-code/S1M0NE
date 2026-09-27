@@ -263,6 +263,25 @@ toute façon modeste) plutôt qu'une fausse promesse de moteur de recherche soph
 s1mone memory list --query pain          # ou -q pain
 ```
 
+## Notes de session (D.3)
+
+Dernier niveau de mémoire jamais consommé (`session`, réservé depuis la Phase 7) : désormais de
+vraies "notes de session" sur `/memory` (web), scopées par un cookie anonyme propre à **ce
+navigateur précis** (`s1mone_browser_session`) — totalement indépendant du cookie
+d'authentification (A.1), sans aucun privilège, juste un identifiant de scoping. Fermer l'onglet
+ne les efface pas (cookie valable 1 an), mais elles ne sont jamais partagées avec un autre
+appareil/navigateur, ni mélangées à la mémoire persistante ou à un projet.
+
+```bash
+# Depuis le terminal, une fois l'id de session vu sur /memory :
+s1mone memory list --session-id <id>
+s1mone memory show session <clé> --session-id <id>
+s1mone memory forget session <clé> --session-id <id>
+```
+
+Les 4 niveaux de mémoire du méga-prompt original (`temporary`, `session`, `project`,
+`persistent`) ont désormais chacun un usage réel.
+
 ## Assistant agentique (B.2) — usage avancé, opt-in explicite
 
 L'assistant IA peut, sur demande explicite seulement, interroger deux outils **strictement en

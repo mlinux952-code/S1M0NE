@@ -330,8 +330,23 @@ attendre de sélection précise à chaque étape (même mandat que pour les Phas
     déjà existants. CLI `s1mone memory list --query/-q`. Web : champ `<input type="search"
     name="q">` sur `/memory`, `/partials/memory-list` accepte `q`. Suite complète : **422/422
     passed**.
-  - Reste à faire pour la catégorie D : D.3 (consommer le niveau mémoire `session`, seul niveau
-    encore réservé — voir DECISIONS.md D7).
+  - **D.3 — Consommer le niveau mémoire `session` : faite, testée (9 + 3 + 7 = 19 nouveaux
+    tests, ajouts `test_memory.py`/`test_cli_memory.py`/`test_web_memory.py`).**
+    `core/memory.py` généralise le scoping (auparavant spécifique à `project_id`) à `project` ET
+    `session` via `_SCOPE_PARAM_BY_LEVEL` (`remember/recall/forget/list_memory` acceptent tous
+    `session_id`, mêmes règles strictes que pour `project_id`). Web : cookie anonyme
+    `s1mone_browser_session` (indépendant du cookie d'auth A.1, aucun privilège), section "Notes
+    de session" sur `/memory` (ajout/suppression/consultation, `/partials/session-notes`),
+    `/partials/memory-list`/`memory-value`/`memory/forget` généralisés pour accepter `session_id`
+    en plus de `project_id`. CLI : `--session-id` sur `memory list/show/forget` (pas de commande
+    `memory remember` en CLI : aucun producteur, le concept de "session terminal" stable entre
+    deux invocations séparées n'existe pas, contrairement à un cookie de navigateur). Les 4
+    niveaux de mémoire du mega-prompt §12 ont maintenant chacun un usage réel. DECISIONS.md D7
+    mis à jour en conséquence. Suite complète : **441/441 passed**.
+  - Catégorie D (D.1 tableau de bord, D.2 recherche mémoire, D.3 niveau session) **terminée**.
+    Plus aucune tâche connue dans NEXT_STEPS.md ni dans les idées post-C.3 — mandat "tous et plus
+    encore" rempli une nouvelle fois ; à rediscuter avec l'utilisateur pour une éventuelle
+    catégorie E, ou considérer S1M0NE comme fonctionnellement complet pour l'instant.
 
 **Important pour l'utilisateur** : `S1MONE_WEB_PASSWORD` doit être choisi et défini par
 l'utilisateur lui-même dans son `.env` sur sa machine réelle (secret que l'agent ne peut pas

@@ -635,6 +635,11 @@ def memory_list(
     project: Optional[str] = typer.Option(
         None, "--project", help="Filtrer sur un projet précis (id ou nom, niveau 'project')."
     ),
+    session_id: Optional[str] = typer.Option(
+        None,
+        "--session-id",
+        help="Filtrer sur une session précise (niveau 'session', ex. le cookie affiché sur /memory).",
+    ),
     query: Optional[str] = typer.Option(
         None,
         "--query",
@@ -648,7 +653,9 @@ def memory_list(
     inspectable et supprimable à tout moment, rien n'est caché."""
     project_id = _resolve_project_or_exit(project) if project else None
     try:
-        entries = memory_module.list_memory(level, project_id=project_id, query=query)
+        entries = memory_module.list_memory(
+            level, project_id=project_id, session_id=session_id, query=query
+        )
     except ValueError as exc:
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(code=1) from exc
@@ -657,9 +664,16 @@ def memory_list(
     table.add_column("Niveau")
     table.add_column("Clé")
     table.add_column("Projet")
+    table.add_column("Session")
     table.add_column("Enregistrée à")
     for e in entries:
-        table.add_row(e["level"], e["key"], e.get("project_id", "") or "", _fmt_ts(e["created_at"]))
+        table.add_row(
+            e["level"],
+            e["key"],
+            e.get("project_id", "") or "",
+            e.get("session_id", "") or "",
+            _fmt_ts(e["created_at"]),
+        )
     console.print(table)
     if not entries:
         console.print("[grey58]Aucune entrée pour ce filtre.[/grey58]")
@@ -672,11 +686,14 @@ def memory_show(
     project: Optional[str] = typer.Option(
         None, "--project", help="Id ou nom de projet (requis si level='project')."
     ),
+    session_id: Optional[str] = typer.Option(
+        None, "--session-id", help="Id de session (requis si level='session')."
+    ),
 ) -> None:
     """Affiche le contenu complet d'une entrée mémorisée."""
     project_id = _resolve_project_or_exit(project) if project else None
     try:
-        value = memory_module.recall(level, key, project_id=project_id)
+        value = memory_module.recall(level, key, project_id=project_id, session_id=session_id)
     except ValueError as exc:
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(code=1) from exc
@@ -693,6 +710,9 @@ def memory_forget(
     project: Optional[str] = typer.Option(
         None, "--project", help="Id ou nom de projet (requis si level='project')."
     ),
+    session_id: Optional[str] = typer.Option(
+        None, "--session-id", help="Id de session (requis si level='session')."
+    ),
     yes: bool = typer.Option(False, "--yes", "-y", help="Ne pas demander de confirmation."),
 ) -> None:
     """Supprime une entrée mémorisée (ex. 'memory forget persistent chat_history' = comme
@@ -705,7 +725,7 @@ def memory_forget(
         console.print("[grey58]Annulé.[/grey58]")
         raise typer.Exit(code=0)
     try:
-        memory_module.forget(level, key, project_id=project_id)
+        memory_module.forget(level, key, project_id=project_id, session_id=session_id)
     except ValueError as exc:
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(code=1) from exc

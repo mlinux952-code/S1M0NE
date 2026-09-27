@@ -33,4 +33,19 @@
 </div>
 
 <div id="memory-value-viewer" style="margin-top:1.5rem;"></div>
+
+<h2 style="margin-top:2rem;">Notes de session (D.3)</h2>
+<p class="hint">
+    Premier vrai usage du niveau <code>session</code> (réservé depuis la Phase 7) : ces notes sont
+    scopées à <strong>ce navigateur précis</strong> (cookie anonyme, sans rapport avec
+    l'authentification web) — jamais partagées avec un autre appareil, ni avec la mémoire
+    persistante ou un projet. Id de session actuel : <code>{{ session_id }}</code>.
+</p>
+<div
+    hx-get="/partials/session-notes"
+    hx-trigger="load"
+    hx-swap="outerHTML"
+>
+    <p class="muted">Chargement…</p>
+</div>
 {% endblock %}
