@@ -1,0 +1,16 @@
+{% if not entries %}
+<p class="muted">Aucune exécution effectuée pour l'instant.</p>
+{% else %}
+{% for e in entries %}
+<div class="card" style="margin-bottom:0.75rem;">
+    <p>
+        <span class="badge">{{ e.site }}</span> <strong>{{ e.name }}</strong>
+        {% if e.ok %}<span class="badge badge-ok">réussie</span>{% else %}<span class="badge" style="color:#e05a5a;">échec</span>{% endif %}
+        <span class="muted">— {{ e.duration_seconds }}s</span>
+    </p>
+    <p><code>{{ e.command_display }}</code></p>
+    <pre class="terminal-output">{{ e.output if e.output is defined else "(sortie non disponible — exécuté avant l'ajout de cet historique)" }}</pre>
+    {% if e.output_truncated %}<p class="muted">Sortie tronquée (limite de taille de l'historique).</p>{% endif %}
+</div>
+{% endfor %}
+{% endif %}

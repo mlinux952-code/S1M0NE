@@ -430,6 +430,11 @@ attendre de sélection précise à chaque étape (même mandat que pour les Phas
       formulaire (interpréteur, fichier, arguments, case réseau), sortie affichée intégralement.
     - Suite complète : **599/599 passed** (32 nouveaux tests : `test_app_run.py`,
       `test_cli_app_run.py`, `test_web_app_run.py`).
+    - **Correctif "je ne vois rien"** : le résultat d'exécution n'était affiché que de façon
+      éphémère (perdu au rechargement) et aucun historique n'existait côté web. Ajout d'une
+      section "Historique des exécutions" persistante sur `/discover` (sortie complète
+      conservée, rafraîchissement automatique via `HX-Trigger`). Voir DECISIONS.md D24.1.
+      Suite complète : **606/606 passed** (7 nouveaux tests).
   - **Post-catégorie D, deux correctifs suite à la mise à jour réelle chez l'utilisateur** :
     1. `install.sh` et `scripts/*.sh` avaient perdu leur bit exécutable dans un commit précédent
        (bug de l'environnement de travail de l'agent) → `./install.sh` échouait avec "Permission

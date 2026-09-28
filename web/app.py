@@ -434,6 +434,17 @@ def create_app() -> FastAPI:
             request, "partials/installed_apps.html", {"entries": list_installed(), "runners": RUNNERS}
         )
 
+    @app.get("/partials/run-history", response_class=HTMLResponse)
+    def partial_run_history(request: Request) -> HTMLResponse:
+        """Historique PERSISTANT des exécutions (contrairement au résultat "live" affiché juste
+        après avoir cliqué "Lancer", qui disparaît si la page est rechargée) — voir DECISIONS.md
+        §D24 (correctif "je ne vois rien")."""
+        from core.app_run import list_runs
+
+        return templates.TemplateResponse(
+            request, "partials/run_history.html", {"entries": list_runs()}
+        )
+
     @app.post("/api/discover/run", response_class=HTMLResponse)
     def api_discover_run(
         request: Request,
@@ -479,11 +490,17 @@ def create_app() -> FastAPI:
         except ValueError as exc:  # arguments mal quotés (shlex.split)
             error = f"Arguments invalides : {exc}"
 
-        return templates.TemplateResponse(
+        response = templates.TemplateResponse(
             request,
             "partials/run_result.html",
             {"site": site, "name": name, "error": error, "result": result},
         )
+        if result is not None:
+            # Signale à la section "Historique des exécutions" de se rafraîchir (htmx
+            # hx-trigger="runCompleted from:body") — le résultat "live" ci-dessus disparaît si la
+            # page est rechargée, l'historique lui persiste réellement (core.memory).
+            response.headers["HX-Trigger"] = "runCompleted"
+        return response
 
     @app.get("/api/notifications")
     def api_notifications_list(unread_only: bool = False, limit: int = 50) -> dict[str, Any]:

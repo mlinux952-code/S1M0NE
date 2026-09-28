@@ -702,3 +702,29 @@ pour que S1M0NE fonctionne. Conforme à la règle LOW RESOURCE FIRST (§3 du mé
   confirmant l'exécution réelle, le blocage réseau et le confinement disque.
 - Suite complète après Catégorie G++ : **599/599 passed** (32 nouveaux tests : `test_app_run.py`,
   `test_cli_app_run.py`, `test_web_app_run.py`).
+
+### D24.1 — Correctif : historique persistant des exécutions ("je ne vois rien")
+
+- **Contexte** : après avoir testé le bouton "Lancer" (D24), l'utilisateur a signalé "je ne vois
+  rien" — en réalité l'exécution avait fonctionné, mais son résultat n'était affiché que de façon
+  **éphémère** (injecté dans `#run-output` par htmx, perdu au moindre rechargement de page ou
+  changement d'onglet) et aucun historique n'existait côté web pour le retrouver après coup
+  (contrairement à `list_installed()`/`/partials/installed-apps` pour les installations).
+- **Correctif** : la sortie complète (tronquée à 4000 caractères, seuil documenté) est désormais
+  conservée dans l'entrée d'historique de `core.app_run` (`run_apps_log`, déjà existant pour
+  `s1mone discover runs` en CLI) — nouveau champ `output`/`output_truncated`. Nouvelle section
+  "Historique des exécutions" sur `/discover` (`/partials/run-history`, cartes avec sortie
+  visible directement, pas de repli), qui se rafraîchit automatiquement après chaque exécution
+  via l'en-tête de réponse `HX-Trigger: runCompleted` (mécanisme natif htmx 2.x, pas d'extension)
+  écouté par `hx-trigger="load, runCompleted from:body"`.
+- **Compatibilité arrière** : les entrées d'historique déjà enregistrées avant ce correctif
+  n'ont pas de champ `output` — le template affiche alors un message explicite plutôt qu'une
+  erreur ou un vide silencieux (`e.output is defined` côté Jinja).
+- **Vérification manuelle réelle bout-en-bout** (Firejail installé, vraie app `TheAlgorithms/
+  Python` réellement clonée puis exécutée via `/api/discover/install` puis `/api/discover/run`
+  simulés par TestClient) : la sortie du tri (`bubble_sort.py`, 5.6s d'exécution réelle sandboxée)
+  apparaît bien à la fois dans le résultat live ET dans l'historique persistant.
+- 7 nouveaux tests (`test_app_run.py` +2, `test_web_app_run.py` +5). Suite complète : **606/606
+  passed** (1 échec ponctuel et non lié observé une fois sur `test_codeberg_connector_real_
+  network_smoke_test` — vrai timeout réseau vers Codeberg, reproduit indépendamment avec `curl`,
+  confirmé sans rapport avec ce correctif ; le test repasse seul dès que le réseau répond).

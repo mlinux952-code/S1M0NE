@@ -37,4 +37,12 @@
 <div id="installed-apps-list" hx-get="/partials/installed-apps" hx-trigger="load" hx-swap="innerHTML">
     <p class="muted">Chargement…</p>
 </div>
+
+<h2 style="margin-top:2rem;">Historique des exécutions</h2>
+<p class="hint">Contrairement au résultat affiché juste après avoir cliqué "Lancer" (qui disparaît
+    si tu recharges la page), cet historique reste visible — il se met à jour automatiquement
+    après chaque exécution.</p>
+<div id="run-history-list" hx-get="/partials/run-history" hx-trigger="load, runCompleted from:body" hx-swap="innerHTML">
+    <p class="muted">Chargement…</p>
+</div>
 {% endblock %}

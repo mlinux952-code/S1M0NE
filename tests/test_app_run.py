@@ -168,6 +168,28 @@ def test_successful_run_is_recorded_and_confined_under_fs_root(installed_app, mo
     assert entries[0]["name"] == "TheAlgorithms/algorithms-keeper"
     assert entries[0]["runner"] == "python3"
     assert entries[0]["ok"] is True
+    assert entries[0]["output"] == "bonjour\n"
+    assert entries[0]["output_truncated"] is False
+
+
+def test_run_output_is_persisted_in_history_not_just_shown_live(installed_app, monkeypatch):
+    """Correctif suite au signalement utilisateur ('je ne vois rien') : le résultat affiché
+    juste après avoir cliqué 'Lancer' disparaît si la page est rechargée — la sortie doit donc
+    aussi être conservée dans l'historique persistant (core.memory), pas seulement retournée."""
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: _FakeCompletedProcess(0, "42,7,3\n"))
+    run_app("github", "TheAlgorithms/algorithms-keeper", "python3", "main.py", confirmed=True)
+    assert "42,7,3" in list_runs()[0]["output"]
+
+
+def test_long_output_is_truncated_in_history(installed_app, monkeypatch):
+    from core.app_run import _MAX_OUTPUT_CHARS
+
+    huge = "x" * (_MAX_OUTPUT_CHARS + 500)
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: _FakeCompletedProcess(0, huge))
+    run_app("github", "TheAlgorithms/algorithms-keeper", "python3", "main.py", confirmed=True)
+    entry = list_runs()[0]
+    assert entry["output_truncated"] is True
+    assert len(entry["output"]) < len(huge)
 
 
 def test_failed_run_reports_failure_honestly(installed_app, monkeypatch):

@@ -64,6 +64,12 @@ RUNNERS: tuple[str, ...] = ("python3", "python", "node", "npm", "java", "ruby", 
 
 _MEMORY_KEY = "run_apps_log"
 _MAX_LOG_ENTRIES = 200
+# La sortie est conservée dans l'historique (contrairement à app_install.py) car c'est le SEUL
+# endroit où elle reste visible après coup côté web : contrairement au résultat "live" affiché
+# juste après avoir cliqué "Lancer" (qui disparaît si la page est rechargée ou quittée), cet
+# historique persiste réellement (core.memory, niveau persistent) — demande explicite de
+# l'utilisateur après un signalement "je ne vois rien" (le résultat était bien là, mais éphémère).
+_MAX_OUTPUT_CHARS = 4000
 
 
 class RunConfirmationRequiredError(Exception):
@@ -263,6 +269,11 @@ def run_app(
         timed_out = True
     duration = time.monotonic() - started
 
+    output_for_log = output
+    truncated = len(output) > _MAX_OUTPUT_CHARS
+    if truncated:
+        output_for_log = output[:_MAX_OUTPUT_CHARS] + "\n[...sortie tronquée, voir les logs...]"
+
     entry_log = {
         "site": site,
         "name": name,
@@ -273,6 +284,8 @@ def run_app(
         "command_display": command_display,
         "ok": ok,
         "exit_code": exit_code,
+        "output": output_for_log,
+        "output_truncated": truncated,
         "run_at": time.time(),
         "duration_seconds": round(duration, 1),
     }

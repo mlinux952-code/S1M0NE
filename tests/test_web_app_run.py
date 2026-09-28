@@ -145,6 +145,51 @@ def test_run_malformed_args_shows_clear_error(installed_app):
     assert "invalides" in r.text.lower()
 
 
+def test_discover_page_has_run_history_zone(installed_app):
+    r = client.get("/discover")
+    assert r.status_code == 200
+    assert 'id="run-history-list"' in r.text
+    assert "/partials/run-history" in r.text
+    assert "runCompleted" in r.text
+
+
+def test_run_history_partial_empty_by_default():
+    r = client.get("/partials/run-history")
+    assert r.status_code == 200
+    assert "Aucune exécution" in r.text
+
+
+def test_run_history_persists_output_after_execution(installed_app, monkeypatch):
+    """Correctif suite au signalement 'je ne vois rien' : le résultat doit rester visible via
+    l'historique persistant, pas seulement dans la réponse htmx éphémère."""
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: _FakeCompletedProcess(0, "42,7,3\n"))
+    client.post(
+        "/api/discover/run",
+        data={"site": "npm", "name": "is-odd", "runner": "node", "entry": "index.js", "confirmed": "true"},
+    )
+    r = client.get("/partials/run-history")
+    assert r.status_code == 200
+    assert "42,7,3" in r.text
+    assert "is-odd" in r.text
+
+
+def test_successful_run_triggers_history_refresh_via_hx_trigger_header(installed_app, monkeypatch):
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: _FakeCompletedProcess(0, "ok\n"))
+    r = client.post(
+        "/api/discover/run",
+        data={"site": "npm", "name": "is-odd", "runner": "node", "entry": "index.js", "confirmed": "true"},
+    )
+    assert r.headers.get("HX-Trigger") == "runCompleted"
+
+
+def test_run_refused_before_execution_does_not_trigger_history_refresh(installed_app):
+    r = client.post(
+        "/api/discover/run",
+        data={"site": "npm", "name": "is-odd", "runner": "node", "entry": "index.js"},
+    )
+    assert "HX-Trigger" not in r.headers
+
+
 def test_run_network_flag_is_passed_through(installed_app, monkeypatch):
     captured = {}
 
